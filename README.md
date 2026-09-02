@@ -1,32 +1,35 @@
-# React + TypeScript + Vite
+# Job Search Assistant
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Job Search Assistant is a local-first job-search workspace. This repository currently contains the Milestone 1 local full-stack foundation.
 
-Currently, two official plugins are available:
+## Requirements
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Node.js 20.19 or later
+- npm
 
-## React Compiler
+## Development
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+`npm run dev` starts both processes:
+
+- Vite frontend: `http://localhost:5173`
+- Local Node.js backend: `http://127.0.0.1:3001`
+
+During development, Vite proxies `/api` requests to the local backend. The current foundation endpoint is `GET /api/health`.
+
+## Build and quality checks
+
+```bash
+npm run build
+npm run lint
+```
+
+The production build compiles the backend to `dist-server/` with TypeScript and builds the frontend to `dist/`. Neither directory is committed.
+
+## Scope
+
+SQLite persistence, migrations, domain models, feature modules, and application workflows are intentionally deferred to later approved milestones.
