@@ -21,6 +21,7 @@ export function resolveMigrationsDir(): string {
   const candidates = [
     join(moduleDir, 'migrations'),
     resolve(moduleDir, '..', '..', 'server', 'database', 'migrations'),
+    resolve(moduleDir, '..', '..', '..', 'server', 'database', 'migrations'),
   ]
   for (const candidate of candidates) {
     if (existsSync(candidate)) {
