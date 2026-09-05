@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=22.5"
+  },
   "scripts": {
     "dev": "concurrently --kill-others-on-fail --names server,web --prefix-colors blue,green \"npm run dev:server\" \"npm run dev:web\"",
     "dev:server": "tsx watch server/server.ts",

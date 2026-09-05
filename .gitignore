@@ -13,6 +13,14 @@ dist-server
 dist-ssr
 *.local
 
+# Local SQLite runtime data (safety net — real data lives outside the repo)
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

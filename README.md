@@ -1,10 +1,10 @@
 # Job Search Assistant
 
-Job Search Assistant is a local-first job-search workspace. This repository currently contains the Milestone 1 local full-stack foundation.
+Job Search Assistant is a local-first job-search workspace. This repository currently contains the Milestone 2 local persistence foundation.
 
 ## Requirements
 
-- Node.js 20.19 or later
+- Node.js 22.5 or later (24 LTS recommended — required for the built-in `node:sqlite` API)
 - npm
 
 ## Development
@@ -21,6 +21,26 @@ npm run dev
 
 During development, Vite proxies `/api` requests to the local backend. The current foundation endpoint is `GET /api/health`.
 
+## Local data
+
+On backend startup, the server resolves an application data directory, creates it, opens the SQLite database, and applies pending migrations from `server/database/migrations/`:
+
+- Windows: `%APPDATA%\Job Search Assistant\`
+- macOS: `~/Library/Application Support/Job Search Assistant/`
+- Linux: `$XDG_DATA_HOME/job-search-assistant/` or `~/.local/share/job-search-assistant/`
+
+Layout:
+
+```text
+<app data>/
+  database/
+    job-search-assistant.db
+  documents/
+    applications/
+```
+
+Set `JOB_SEARCH_ASSISTANT_DATA_DIR` to override the location (useful for development and testing). Runtime data is never stored inside the repository.
+
 ## Build and quality checks
 
 ```bash
@@ -32,4 +52,4 @@ The production build compiles the backend to `dist-server/` with TypeScript and 
 
 ## Scope
 
-SQLite persistence, migrations, domain models, feature modules, and application workflows are intentionally deferred to later approved milestones.
+SQLite connection lifecycle, migrations, and local data directory management are implemented. Domain models, feature modules, and application workflows are intentionally deferred to later approved milestones.
