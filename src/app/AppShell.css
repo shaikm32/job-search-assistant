@@ -1,0 +1,48 @@
+.shell {
+  min-height: 100svh;
+}
+
+.shell-header {
+  border-bottom: 1px solid var(--border);
+}
+
+.shell-header-inner {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+}
+
+.brand {
+  font-weight: 700;
+  color: var(--text-h);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.shell-nav {
+  display: flex;
+  gap: 4px;
+}
+
+.nav-link {
+  padding: 6px 12px;
+  border-radius: 8px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.nav-link:hover {
+  color: var(--text-h);
+}
+
+.nav-link--active {
+  color: var(--text-h);
+  background: var(--accent-bg);
+}
+
+.shell-main {
+  outline: none;
+}
