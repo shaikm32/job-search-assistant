@@ -129,9 +129,11 @@ export function listApplications(
   const sortColumn = SORT_COLUMNS[filters.sortBy ?? 'dateApplied']
   const sortOrder = filters.sortOrder === 'asc' ? 'ASC' : 'DESC'
   const where = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : ''
+  // Secondary id key keeps tied values in a deterministic order without
+  // requiring additional schema or indexes.
   const rows = db
     .prepare(
-      `SELECT ${SELECT_COLUMNS} FROM applications${where} ORDER BY ${sortColumn} ${sortOrder}`,
+      `SELECT ${SELECT_COLUMNS} FROM applications${where} ORDER BY ${sortColumn} ${sortOrder}, id ${sortOrder}`,
     )
     .all(...params) as unknown as ApplicationRow[]
   return rows.map(toDomain)

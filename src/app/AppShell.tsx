@@ -11,7 +11,7 @@ const TITLES: Array<[RegExp, string]> = [
   [/^\/people\/[^/]+\/edit$/, 'Edit Person - Job Search Assistant'],
   [/^\/people\/[^/]+$/, 'Person Details - Job Search Assistant'],
   [/^\/people$/, 'People - Job Search Assistant'],
-  [/^\/$/, 'Job Search Assistant'],
+  [/^\/$/, 'Dashboard - Job Search Assistant'],
 ]
 
 function titleFor(pathname: string): string {

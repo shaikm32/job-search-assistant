@@ -52,4 +52,4 @@ The production build compiles the backend to `dist-server/` with TypeScript and 
 
 ## Scope
 
-SQLite connection lifecycle, migrations, and local data directory management are implemented. Shared domain contracts live in `shared/domain/` and are consumed by both the frontend and the backend. Feature modules, backend module wiring, and application workflows are intentionally deferred to later approved milestones.
+SQLite persistence, shared domain contracts, backend modules with HTTP APIs, the Applications and People features, and the computed Dashboard are implemented. UI polish (themes, custom dialogs, accessibility audit) is intentionally deferred to a later milestone.

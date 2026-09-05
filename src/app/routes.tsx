@@ -3,6 +3,7 @@ import { AddApplicationPage } from '../features/applications/AddApplicationPage.
 import { ApplicationDetailPage } from '../features/applications/ApplicationDetailPage.js'
 import { ApplicationsPage } from '../features/applications/ApplicationsPage.js'
 import { EditApplicationPage } from '../features/applications/EditApplicationPage.js'
+import { DashboardPage } from '../features/dashboard/DashboardPage.js'
 import { AddPersonPage } from '../features/people/AddPersonPage.js'
 import { EditPersonPage } from '../features/people/EditPersonPage.js'
 import { PeoplePage } from '../features/people/PeoplePage.js'
@@ -17,12 +18,7 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: (
-          <PlaceholderPage
-            title="Dashboard"
-            message="The dashboard arrives in Milestone 7. Application tracking is available now."
-          />
-        ),
+        element: <DashboardPage />,
       },
       { path: 'applications', element: <ApplicationsPage /> },
       { path: 'applications/new', element: <AddApplicationPage /> },

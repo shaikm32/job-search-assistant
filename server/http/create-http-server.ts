@@ -5,6 +5,7 @@ import {
   type ServerResponse,
 } from 'node:http'
 import { handleApplicationRoutes } from '../modules/applications/application.routes.js'
+import { handleDashboardRoutes } from '../modules/dashboard/dashboard.routes.js'
 import { handleDocumentRoutes } from '../modules/documents/document.routes.js'
 import { handlePeopleRoutes } from '../modules/people/person.routes.js'
 import { sendApiError } from './api-errors.js'
@@ -23,6 +24,9 @@ async function dispatchRequest(
     return
   }
   if (await handleApplicationRoutes(request, response, requestUrl, segments)) {
+    return
+  }
+  if (await handleDashboardRoutes(request, response, requestUrl, segments)) {
     return
   }
   if (await handlePeopleRoutes(request, response, requestUrl, segments)) {
