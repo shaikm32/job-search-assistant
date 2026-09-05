@@ -36,7 +36,7 @@ export function ApplicationsPage() {
 
   const toggleSort = (key: string) => {
     if (sortBy === key) {
-      updateParams({ sortBy: key, sortOrder: sortOrder === 'asc' ? 'desc' : undefined })
+      updateParams({ sortBy: key, sortOrder: sortOrder === 'asc' ? 'desc' : 'asc' })
     } else {
       updateParams({ sortBy: key === 'dateApplied' ? undefined : key, sortOrder: undefined })
     }

@@ -43,8 +43,11 @@ function optionalText(value: unknown, field: string): string | null | undefined 
 }
 
 function validateLinkedinUrl(value: unknown): string | null | undefined {
-  if (value === undefined || value === null) {
-    return value ?? undefined
+  if (value === undefined) {
+    return undefined
+  }
+  if (value === null) {
+    return null
   }
   if (typeof value !== 'string' || value.trim().length === 0) {
     return null
@@ -62,8 +65,11 @@ function validateLinkedinUrl(value: unknown): string | null | undefined {
 }
 
 function validateRequestSentDate(value: unknown): string | null | undefined {
-  if (value === undefined || value === null) {
-    return value ?? undefined
+  if (value === undefined) {
+    return undefined
+  }
+  if (value === null) {
+    return null
   }
   if (typeof value !== 'string' || value.trim().length === 0) {
     return null

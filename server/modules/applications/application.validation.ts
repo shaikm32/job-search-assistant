@@ -42,8 +42,11 @@ function optionalText(value: unknown, field: string): string | null | undefined 
 }
 
 function validateJobUrl(value: unknown): string | null | undefined {
-  if (value === undefined || value === null) {
-    return value ?? undefined
+  if (value === undefined) {
+    return undefined
+  }
+  if (value === null) {
+    return null
   }
   if (typeof value !== 'string' || value.trim().length === 0) {
     return null

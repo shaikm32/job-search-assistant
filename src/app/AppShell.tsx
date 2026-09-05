@@ -7,7 +7,10 @@ const TITLES: Array<[RegExp, string]> = [
   [/^\/applications\/[^/]+\/edit$/, 'Edit Application - Job Search Assistant'],
   [/^\/applications\/[^/]+$/, 'Application Details - Job Search Assistant'],
   [/^\/applications$/, 'Applications - Job Search Assistant'],
-  [/^\/people/, 'People - Job Search Assistant'],
+  [/^\/people\/new$/, 'Add Person - Job Search Assistant'],
+  [/^\/people\/[^/]+\/edit$/, 'Edit Person - Job Search Assistant'],
+  [/^\/people\/[^/]+$/, 'Person Details - Job Search Assistant'],
+  [/^\/people$/, 'People - Job Search Assistant'],
   [/^\/$/, 'Job Search Assistant'],
 ]
 
