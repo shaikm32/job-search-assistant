@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { ApiError } from '../../api/client.js'
+import { useConfirm } from '../../components/common/ConfirmDialog.js'
 import { StatusBanner } from '../../components/common/StatusBanner.js'
 import { PersonForm, type PersonFormValues } from './PersonForm.js'
 import { updatePerson } from './peopleApi.js'
@@ -18,6 +19,7 @@ export function EditPersonPage() {
   const [busy, setBusy] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
+  const { confirm, dialog } = useConfirm()
 
   if (status === 'loading') {
     return (
@@ -32,7 +34,7 @@ export function EditPersonPage() {
         <h1 className="page-title">Person not found</h1>
         <p>
           <Link className="link" to="/people">
-            ← People
+            ← Networking
           </Link>
         </p>
       </div>
@@ -60,9 +62,16 @@ export function EditPersonPage() {
     notes: person.notes ?? '',
   }
 
-  const handleCancel = () => {
-    if (dirty && !window.confirm('Discard unsaved changes?')) {
-      return
+  const handleCancel = async () => {
+    if (dirty) {
+      const confirmed = await confirm({
+        title: 'Discard changes?',
+        message: 'You have unsaved changes. Leave without saving them?',
+        confirmLabel: 'Discard',
+      })
+      if (!confirmed) {
+        return
+      }
     }
     void navigate(`/people/${person.id}`)
   }
@@ -107,6 +116,7 @@ export function EditPersonPage() {
         onDirtyChange={setDirty}
         onSubmit={(values) => void handleSubmit(values)}
       />
+      {dialog}
     </div>
   )
 }

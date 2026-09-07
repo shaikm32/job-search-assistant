@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import type { DocumentType } from '../../../shared/domain/document.js'
 import { ApiError } from '../../api/client.js'
+import { useConfirm } from '../../components/common/ConfirmDialog.js'
 import { StatusBanner } from '../../components/common/StatusBanner.js'
 import { ApplicationForm, type ApplicationFormValues } from './ApplicationForm.js'
 import { createApplication } from './applicationsApi.js'
@@ -29,10 +30,18 @@ export function AddApplicationPage() {
   const [busy, setBusy] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
+  const { confirm, dialog } = useConfirm()
 
-  const handleCancel = () => {
-    if (dirty && !window.confirm('Discard unsaved changes?')) {
-      return
+  const handleCancel = async () => {
+    if (dirty) {
+      const confirmed = await confirm({
+        title: 'Discard changes?',
+        message: 'You have unsaved changes. Leave without saving them?',
+        confirmLabel: 'Discard',
+      })
+      if (!confirmed) {
+        return
+      }
     }
     void navigate('/applications')
   }
@@ -86,7 +95,7 @@ export function AddApplicationPage() {
   return (
     <div className="page">
       <Link className="link back-link" to="/applications">
-        ← Applications
+        ← Back to Applications
       </Link>
       <h1 className="page-title">Add Application</h1>
       {busy ? <StatusBanner tone="loading">Saving application…</StatusBanner> : null}
@@ -100,6 +109,7 @@ export function AddApplicationPage() {
         onDirtyChange={setDirty}
         onSubmit={(values) => void handleSubmit(values)}
       />
+      {dialog}
     </div>
   )
 }

@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { ApplicationStage } from '../../../shared/domain/application.js'
 import { APPLICATION_STAGES } from '../../../shared/domain/application.js'
+import { DropzoneField } from '../../components/common/DropzoneField.js'
 import { Field } from '../../components/common/Field.js'
+import { SectionTitle } from '../../components/common/SectionTitle.js'
 import { ACCEPTED_DOCUMENT_EXTENSIONS, isSupportedDocumentFile } from './documentsApi.js'
 
 export interface ApplicationFormValues {
@@ -27,6 +29,9 @@ interface ApplicationFormProps {
   onCancel: () => void
   onDirtyChange?: (dirty: boolean) => void
   onSubmit: (values: ApplicationFormValues) => void
+  /** Right-column Documents panel for flows (Edit) that manage persisted
+      documents instead of pending picks. Add leaves this unset. */
+  documentsPanel?: ReactNode
 }
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
@@ -40,6 +45,7 @@ export function ApplicationForm({
   onCancel,
   onDirtyChange,
   onSubmit,
+  documentsPanel,
 }: ApplicationFormProps) {
   const [values, setValues] = useState<ApplicationFormValues>(initial)
   const [errors, setErrors] = useState<ApplicationFormErrors>({})
@@ -94,120 +100,140 @@ export function ApplicationForm({
   }
 
   return (
-    <form className="form" onSubmit={handleSubmit} noValidate>
-      <fieldset className="form-section">
-        <legend>Job details</legend>
-        <Field id="company" label="Company name" error={errors.company}>
-          <input
-            id="company"
-            className="input"
-            type="text"
-            value={values.company}
-            disabled={busy}
-            onChange={(event) => set('company', event.target.value)}
-          />
-        </Field>
-        <Field id="jobTitle" label="Job title" error={errors.jobTitle}>
-          <input
-            id="jobTitle"
-            className="input"
-            type="text"
-            value={values.jobTitle}
-            disabled={busy}
-            onChange={(event) => set('jobTitle', event.target.value)}
-          />
-        </Field>
-        <Field id="location" label="Location" error={errors.location}>
-          <input
-            id="location"
-            className="input"
-            type="text"
-            value={values.location}
-            disabled={busy}
-            onChange={(event) => set('location', event.target.value)}
-          />
-        </Field>
-        <Field id="jobUrl" label="Job URL (optional)" error={errors.jobUrl}>
-          <input
-            id="jobUrl"
-            className="input"
-            type="url"
-            placeholder="https://…"
-            value={values.jobUrl}
-            disabled={busy}
-            onChange={(event) => set('jobUrl', event.target.value)}
-          />
-        </Field>
-      </fieldset>
+    <form className="form form--wide" onSubmit={handleSubmit} noValidate>
+      <div className="form-grid">
+        <div className="form-column">
+          <fieldset className="form-section">
+            <legend>
+              <SectionTitle icon="briefcase">Job Details</SectionTitle>
+            </legend>
+            <Field id="company" label="Company Name *" error={errors.company}>
+              <input
+                id="company"
+                className="input"
+                type="text"
+                placeholder="e.g. Google"
+                value={values.company}
+                disabled={busy}
+                onChange={(event) => set('company', event.target.value)}
+              />
+            </Field>
+            <Field id="jobTitle" label="Job Title *" error={errors.jobTitle}>
+              <input
+                id="jobTitle"
+                className="input"
+                type="text"
+                placeholder="e.g. Product Manager"
+                value={values.jobTitle}
+                disabled={busy}
+                onChange={(event) => set('jobTitle', event.target.value)}
+              />
+            </Field>
+            <Field id="location" label="Location *" error={errors.location}>
+              <input
+                id="location"
+                className="input"
+                type="text"
+                placeholder="e.g. Dubai, UAE"
+                value={values.location}
+                disabled={busy}
+                onChange={(event) => set('location', event.target.value)}
+              />
+            </Field>
+            <Field id="jobUrl" label="Job URL" error={errors.jobUrl}>
+              <input
+                id="jobUrl"
+                className="input"
+                type="url"
+                placeholder="https://…"
+                value={values.jobUrl}
+                disabled={busy}
+                onChange={(event) => set('jobUrl', event.target.value)}
+              />
+            </Field>
+          </fieldset>
 
-      <fieldset className="form-section">
-        <legend>Application details</legend>
-        <Field id="dateApplied" label="Date applied" error={errors.dateApplied}>
-          <input
-            id="dateApplied"
-            className="input"
-            type="date"
-            value={values.dateApplied}
-            disabled={busy}
-            onChange={(event) => set('dateApplied', event.target.value)}
-          />
-        </Field>
-        <Field id="currentStage" label="Current stage" error={errors.currentStage}>
-          <select
-            id="currentStage"
-            className="input"
-            value={values.currentStage}
-            disabled={busy}
-            onChange={(event) => set('currentStage', event.target.value as ApplicationStage)}
-          >
-            {APPLICATION_STAGES.map((stage) => (
-              <option key={stage} value={stage}>
-                {stage}
-              </option>
-            ))}
-          </select>
-        </Field>
-      </fieldset>
+          <fieldset className="form-section">
+            <legend>
+              <SectionTitle icon="doc">Application Details</SectionTitle>
+            </legend>
+            <Field id="dateApplied" label="Date Applied *" error={errors.dateApplied}>
+              <input
+                id="dateApplied"
+                className="input"
+                type="date"
+                value={values.dateApplied}
+                disabled={busy}
+                onChange={(event) => set('dateApplied', event.target.value)}
+              />
+            </Field>
+            <Field id="currentStage" label="Current Stage *" error={errors.currentStage}>
+              <select
+                id="currentStage"
+                className="input"
+                value={values.currentStage}
+                disabled={busy}
+                onChange={(event) => set('currentStage', event.target.value as ApplicationStage)}
+              >
+                {APPLICATION_STAGES.map((stage) => (
+                  <option key={stage} value={stage}>
+                    {stage}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </fieldset>
+        </div>
 
-      {showDocumentPickers ? (
-        <fieldset className="form-section">
-          <legend>Documents (optional)</legend>
-          <Field id="resumeFile" label="Resume (PDF, DOC, DOCX)" error={errors.resumeFile}>
-            <input
-              id="resumeFile"
-              className="input"
-              type="file"
-              accept={ACCEPTED_DOCUMENT_EXTENSIONS}
-              disabled={busy}
-              onChange={(event) => handleFile('resumeFile', event.target.files?.[0] ?? null)}
-            />
-          </Field>
-          <Field id="coverLetterFile" label="Cover letter (PDF, DOC, DOCX)" error={errors.coverLetterFile}>
-            <input
-              id="coverLetterFile"
-              className="input"
-              type="file"
-              accept={ACCEPTED_DOCUMENT_EXTENSIONS}
-              disabled={busy}
-              onChange={(event) => handleFile('coverLetterFile', event.target.files?.[0] ?? null)}
-            />
-          </Field>
-        </fieldset>
-      ) : null}
+        <div className="form-column">
+          {showDocumentPickers ? (
+            <fieldset className="form-section">
+              <legend>
+                <SectionTitle icon="doc">Documents (Optional)</SectionTitle>
+              </legend>
+              <DropzoneField
+                id="resumeFile"
+                label="Resume"
+                hint="PDF, DOC, DOCX"
+                accept={ACCEPTED_DOCUMENT_EXTENSIONS}
+                disabled={busy}
+                error={errors.resumeFile}
+                onFile={(file) => handleFile('resumeFile', file)}
+                onClear={() => handleFile('resumeFile', null)}
+              />
+              <DropzoneField
+                id="coverLetterFile"
+                label="Cover Letter"
+                hint="PDF, DOC, DOCX"
+                accept={ACCEPTED_DOCUMENT_EXTENSIONS}
+                disabled={busy}
+                error={errors.coverLetterFile}
+                onFile={(file) => handleFile('coverLetterFile', file)}
+                onClear={() => handleFile('coverLetterFile', null)}
+              />
+            </fieldset>
+          ) : (
+            documentsPanel
+          )}
 
-      <fieldset className="form-section">
-        <legend>Notes (optional)</legend>
-        <Field id="notes" label="Notes" error={errors.notes}>
-          <textarea
-            id="notes"
-            className="input"
-            rows={4}
-            value={values.notes}
-            disabled={busy}
-            onChange={(event) => set('notes', event.target.value)}
-          />
-        </Field>
-      </fieldset>
+          <fieldset className="form-section">
+            <legend>
+              <SectionTitle icon="note">Notes (Optional)</SectionTitle>
+            </legend>
+            <Field id="notes" label="Notes" error={errors.notes}>
+              <textarea
+                id="notes"
+                className="input"
+                rows={4}
+                placeholder="Add any additional notes…"
+                value={values.notes}
+                disabled={busy}
+                onChange={(event) => set('notes', event.target.value)}
+              />
+            </Field>
+          </fieldset>
+        </div>
+      </div>
 
       {serverError ? (
         <p className="banner banner--error" role="alert">

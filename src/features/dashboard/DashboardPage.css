@@ -1,63 +1,445 @@
-.metric-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-  gap: 12px;
-  margin: 16px 0 32px;
+/* M8-D at-a-glance density: the dashboard is a command center, not a long
+   page. One compact composition serves all desktop heights (both the
+   1600×900 and 1920×1080 targets must fit without scrolling; taller
+   viewports simply gain bottom air). Density comes from margins, padding,
+   gaps and row heights — typography stays readable. No scaling, zoom,
+   clipping, fixed heights or internal scrolling anywhere. */
+.page.dashboard {
+  padding-top: var(--space-4);
+  /* Symmetric 16px page rhythm (matches page-top); the 8px recovered here,
+     plus the grid/metric rhythm below, absorb subpixel-level variance so a
+     668px viewport holds the full composition with margin to spare. */
+  padding-bottom: var(--space-4);
 }
 
-.metric-card {
+.dashboard-hero {
+  margin-bottom: var(--space-2);
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+  /* Sibling balance: with the compact 2-column Pipeline (~same height as a
+     few recent rows), stretched panels form a balanced pair — the Recent
+     record top-packs and the remaining workspace stays intentionally
+     empty. No artificial heights; the grid row is content-driven. */
+}
+
+.dashboard-panel {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background:
+    var(--glass-sheen),
+    var(--glass-elevated, var(--glass));
+  -webkit-backdrop-filter: blur(12px) saturate(1.15);
+  backdrop-filter: blur(12px) saturate(1.15);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    var(--shadow-md);
+  padding: var(--space-2) var(--space-4);
+  min-width: 0;
+}
+
+/* Panel section headers sit tighter so workspace chrome costs less height. */
+.dashboard-panel .section-header {
+  margin-bottom: var(--space-1);
+}
+
+/* Material architecture: the panel owns the single glass treatment
+   (base rule above, the only backdrop blur in this file). No additive
+   radial white overlay — the environment transmits through the one sheen
+   + fill. Repeated items use the lightweight content treatment below. */
+
+/* Lightweight glass content (Dashboard refinement): repeated items inside a
+   workspace get a translucent fill + subtle border + radius + gap so each
+   item is individually identifiable — without backdrop blur, sheen,
+   pseudo-element washes or strong shadows. The parent panel remains the
+   dominant glass surface; the atmosphere stays visible through the rows. */
+.dashboard-panel .recent-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--bg);
-}
-
-.metric-value {
-  font-size: 28px;
-  font-weight: 600;
-  color: var(--text-h);
-}
-
-.metric-label {
-  font-size: 14px;
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 16px;
-}
-
-.pipeline-list,
-.recent-list {
+  gap: var(--space-1);
   list-style: none;
-  margin: 8px 0 32px;
+  border: none;
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
   padding: 0;
+  margin-bottom: 0;
 }
 
-.pipeline-row,
-.recent-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  padding: 10px 0;
+/* Desktop Pipeline is a 2-column stage grid, not stacked rows: the
+   independent stages halve their vertical footprint by using abundant
+   horizontal space. DOM order already pairs stages logically (Applied |
+   Interview 1, Interview 2 | Final Interview, Offer Received | Withdrawn,
+   Rejected), so tab/keyboard order matches the visual rows with no markup
+   change. Each item keeps its horizontal label | bar | count flex layout.
+   (≤640px keeps its own stacked-row override below; 641–900px stacked
+   panels are even roomier.) */
+.dashboard-panel .pipeline-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-1);
+  list-style: none;
+  border: none;
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+  padding: 0;
+  margin-bottom: 0;
+}
+
+/* Correction: whisper-translucent fills so the blue/lavender/pink
+   atmosphere shows through each row. Light 0.12 / dark 0.04 white sit far
+   below --surface (0.38 light); the 1px border carries the boundary, not
+   the fill. No blur, no sheen, no overlays, no extra shadow. */
+.dashboard .dashboard-panel .pipeline-row,
+.dashboard .dashboard-panel .recent-row {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  /* No-scroll composition: 4px vertical padding keeps rows at ~36px with
+     full-size readable text — density from whitespace, not tiny type. */
+  padding: 4px var(--space-3);
+}
+
+/* 2-column stage items are narrower than full-width rows: 15px labels
+   (still comfortable body text), a slightly tighter internal gap, and a
+   2.5rem bar floor keep every displayed stage on one line next to a
+   meaningful bar. Recent rows keep base rhythm. */
+.dashboard .dashboard-panel .pipeline-row {
+  gap: var(--space-3);
+}
+
+.dashboard .dashboard-panel .pipeline-row .link {
+  font-size: 15px;
+}
+
+:root[data-theme='light'] .dashboard .dashboard-panel .pipeline-row,
+:root[data-theme='light'] .dashboard .dashboard-panel .recent-row {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.dashboard .dashboard-panel .pipeline-row:first-child,
+.dashboard .dashboard-panel .recent-row:first-child {
   border-top: 1px solid var(--border);
 }
 
-.pipeline-count {
-  font-weight: 600;
-  color: var(--text-h);
+.dashboard .dashboard-panel .pipeline-row:hover,
+.dashboard .dashboard-panel .recent-row:hover {
+  border-color: var(--border-highlight);
+  background: rgba(255, 255, 255, 0.08);
 }
 
-.recent-meta {
-  display: flex;
+:root[data-theme='light'] .dashboard .dashboard-panel .pipeline-row:hover,
+:root[data-theme='light'] .dashboard .dashboard-panel .recent-row:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Recent records use an intentional three-column grid — flexible title,
+   status area, date area — so status and date align vertically across all
+   records. `auto` tracks size to the widest occupant, so no per-record
+   margins or hard-coded positions are needed. Narrow widths reflow via
+   the mobile areas below instead of overflowing. */
+.dashboard .dashboard-panel .recent-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-3);
+}
+
+.dashboard .dashboard-panel .recent-row .recent-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dashboard .dashboard-panel .recent-row .recent-date {
   font-size: 14px;
-  flex-shrink: 0;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* In-panel empty-state: transparent content, not nested glass.
+   No fill, no blur, no shadow, no dashed border — spacing and
+   typography carry the hierarchy inside an existing workspace. */
+.dashboard-panel .empty-state {
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+  border: none;
+  padding: var(--space-4) 0 var(--space-2);
+  margin-top: 0;
+}
+
+/* In-panel networking metrics: lightweight cards visually related to the
+   standalone metric cards but flatter and more transparent — whisper fill,
+   subtle border, radius, minimal elevation. No blur, no sheen,
+   no pseudo-element wash. The grid stretches all four to equal height. */
+.dashboard-panel .metric-cards--compact {
+  margin-bottom: 0;
+}
+
+/* Height parity with the primary metric cards: identical vertical padding
+   (12px) around identical content (32px value + 4px row-gap + 13px label)
+   yields an identical box — 24 + 33.59 + 4 + 25.5 + 2 borders ≈ 89px —
+   so the row no longer stretches the first three cards past the top
+   metrics' height. Material still differs (whisper fill, no blur). */
+.dashboard .dashboard-panel .metric-card {
+  background: rgba(255, 255, 255, 0.04);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-3) var(--space-3);
+}
+
+:root[data-theme='light'] .dashboard .dashboard-panel .metric-card {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.dashboard-panel .metric-card::after {
+  content: none;
+}
+
+.dashboard .dashboard-panel .metric-card:hover {
+  border-color: var(--border-highlight);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: var(--shadow-sm);
+}
+
+:root[data-theme='light'] .dashboard .dashboard-panel .metric-card:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Shared internal rhythm: the grid stretches all four cards to equal
+   height. In-panel headed cards reuse the shared base composition (icon
+   spanning both rows, value/label stacked), plus one packing rule: the
+   stretched row leaves free vertical space that would otherwise
+   distribute into the value → label gap (measured 14.7px vs 4px on the
+   top metrics, whose tracks hug content exactly). Packing tracks at the
+   top keeps the shared 4px row-gap as the sole inter-track space; the
+   leftover rests below the label inside the unchanged-height card. */
+.dashboard .dashboard-panel .metric-cards--compact {
+  align-items: stretch;
+}
+
+.dashboard .dashboard-panel .metric-card:has(.metric-card-head) {
+  align-content: start;
+}
+
+/* Fourth card (no icon/head) keeps its natural flex-column flow, top-packed
+   like its siblings — same padding, same rhythm, no imitation layout. */
+.dashboard .dashboard-panel .metric-card:not(:has(.metric-card-head)) {
+  justify-content: flex-start;
+}
+
+/* Connection-outcome heading: a sentence, not a numeral, so it sits
+   subordinate to the 32px primary metric numbers. At 18px it fits its
+   ~250px column on one line, keeping this card shorter than its headed
+   siblings so it never drives the row taller. Clearly readable, with the
+   existing label beneath it. Wrapping remains allowed at narrow widths. */
+.dashboard .dashboard-panel .metric-card:not(:has(.metric-card-head)) .metric-value {
+  font-size: 18px;
+  letter-spacing: 0;
+  line-height: 1.3;
+}
+
+.pipeline-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  /* 2-column items give each bar less room: a 2.5rem floor keeps the bar
+     visible and proportional without forcing long labels to wrap. */
+  min-width: 2.5rem;
+}
+
+.pipeline-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+  transition: width var(--motion-base);
+}
+
+/* Pass 4 — desktop composition: same information, tighter dashboard rhythm.
+   Standalone metric cards keep their glass + padding; in-panel content uses
+   the lightweight treatment defined above (stronger selectors win). */
+.dashboard .metric-cards {
+  margin: var(--space-2) 0 var(--space-3);
+}
+
+.dashboard .metric-cards--compact {
+  margin-bottom: var(--space-4);
+}
+
+.dashboard .metric-card {
+  padding: var(--space-3) var(--space-4);
+}
+
+/* Metric values stay prominent at 32px — the density saving comes from
+   card padding and section margins, not from shrinking numerals. */
+.dashboard .metric-value {
+  font-size: 32px;
+}
+
+.dashboard .pipeline-row,
+.dashboard .recent-row {
+  padding: 10px 0;
+}
+
+/* In-panel overrides (higher specificity): lightweight content padding and
+   transparent in-panel empty-state. No blur on repeated content. */
+.dashboard .dashboard-panel .metric-cards--compact {
+  margin-bottom: 0;
+}
+
+.dashboard .dashboard-panel .empty-state {
+  padding: var(--space-4) 0 var(--space-2);
+}
+
+@media (max-width: 900px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Mobile command-center composition (≤640px) ----------
+   Deliberately compact grids instead of one long vertical stack. All
+   displayed pipeline stages stay visible (two-column cards, bars preserved
+   full-width inside each card); metrics and networking use 2×2 grids;
+   recent sizes to its content. No hiding, no accordions, no scrolling. */
+@media (max-width: 640px) {
+  .page.dashboard {
+    padding-top: var(--space-3);
+    padding-bottom: var(--space-4);
+  }
+
+  /* Hero condenses but keeps hierarchy: 26px greeting, 14px summary. */
+  .dashboard-hero {
+    margin-bottom: var(--space-2);
+  }
+
+  .dashboard-hero .page-title {
+    font-size: 26px;
+  }
+
+  .dashboard-hero .page-subtitle {
+    font-size: 14px;
+  }
+
+  .dashboard-grid {
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+  }
+
+  .dashboard .metric-cards {
+    gap: var(--space-2);
+  }
+
+  .dashboard .metric-card {
+    padding: var(--space-3);
+  }
+
+  .dashboard .metric-value {
+    font-size: 28px;
+  }
+
+  /* Smaller chips keep the icon+value row compact without losing identity. */
+  .dashboard .metric-card-head .icon-chip {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 12px;
+  }
+
+  /* Compact empty state: same message, tighter type rhythm. */
+  .dashboard-panel .empty-state {
+    padding: var(--space-3) 0 var(--space-2);
+  }
+
+  .dashboard-panel .empty-state h2 {
+    font-size: 18px;
+  }
+
+  .dashboard-panel .empty-state p {
+    font-size: 14px;
+    margin-bottom: var(--space-3);
+  }
+
+  /* Recent records reflow: title spans the full row, status and date
+     share the second row, so nothing overflows at narrow widths. */
+  .dashboard .dashboard-panel .recent-row {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      'title title'
+      'status date';
+    gap: var(--space-1) var(--space-3);
+  }
+
+  .dashboard .dashboard-panel .recent-row .recent-title {
+    grid-area: title;
+  }
+
+  .dashboard .dashboard-panel .recent-row .recent-status {
+    grid-area: status;
+  }
+
+  .dashboard .dashboard-panel .recent-row .recent-date {
+    grid-area: date;
+    justify-self: end;
+  }
+
+  /* Pipeline becomes a two-column card grid: label + count share the top
+     row, the progress bar keeps its meaning full-width underneath. */
+  .dashboard-panel .pipeline-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2);
+  }
+
+  .dashboard .dashboard-panel .pipeline-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      'label count'
+      'bar bar';
+    gap: 2px var(--space-2);
+    align-items: center;
+    padding: 6px var(--space-3);
+  }
+
+  .dashboard .dashboard-panel .pipeline-row > * {
+    min-width: 0;
+  }
+
+  .dashboard .dashboard-panel .pipeline-row .link {
+    grid-area: label;
+  }
+
+  .dashboard .dashboard-panel .pipeline-row .pipeline-bar {
+    grid-area: bar;
+    min-width: 0;
+  }
+
+  .dashboard .dashboard-panel .pipeline-row .pipeline-count {
+    grid-area: count;
+  }
+
+  /* Acceptance-rate heading keeps its semantic text at the same
+     subordinate size as desktop; it may wrap on half-width cards. */
+  .dashboard .dashboard-panel .metric-card:not(:has(.metric-card-head)) .metric-value {
+    font-size: 18px;
+    letter-spacing: 0;
+  }
 }

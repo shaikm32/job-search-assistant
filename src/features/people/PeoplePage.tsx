@@ -1,8 +1,8 @@
 import { Link } from 'react-router'
 import { CONNECTION_STATUSES } from '../../../shared/domain/person.js'
 import { StatusBanner } from '../../components/common/StatusBanner.js'
+import { StatusBadge, connectionTone } from '../../components/common/StatusBadge.js'
 import { usePeople } from './usePeople.js'
-import './PeoplePage.css'
 
 function SortHeader({
   sortKey,
@@ -69,10 +69,10 @@ export function PeoplePage() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title">People</h1>
+          <h1 className="page-title">Networking</h1>
           <p className="page-subtitle">Track your professional networking connections and outreach.</p>
         </div>
-        <Link className="button button--primary" to="/people/new">
+        <Link className="button button--glass" to="/people/new">
           + Add Person
         </Link>
       </div>
@@ -120,7 +120,7 @@ export function PeoplePage() {
             Start building your professional network. Add your first person to track your
             connections, outreach, and connection requests in one place.
           </p>
-          <Link className="button button--primary" to="/people/new">
+          <Link className="button button--glass" to="/people/new">
             + Add Person
           </Link>
         </div>
@@ -137,6 +137,7 @@ export function PeoplePage() {
       ) : null}
 
       {status === 'ready' && result.total > 0 ? (
+        <div className="table-scroll">
         <table className="table">
           <thead>
             <tr>
@@ -160,7 +161,11 @@ export function PeoplePage() {
                 <td>{person.company ?? '—'}</td>
                 <td>{person.jobTitle ?? '—'}</td>
                 <td>{person.personType ?? '—'}</td>
-                <td>{person.connectionStatus}</td>
+                <td>
+                  <StatusBadge tone={connectionTone(person.connectionStatus)}>
+                    {person.connectionStatus}
+                  </StatusBadge>
+                </td>
                 <td>{person.requestSentDate ?? '—'}</td>
                 <td>
                   {person.linkedinUrl && isExternalHttpUrl(person.linkedinUrl) ? (
@@ -175,6 +180,7 @@ export function PeoplePage() {
             ))}
           </tbody>
         </table>
+        </div>
       ) : null}
     </div>
   )

@@ -1,194 +1,563 @@
-:root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+/* Job Search Assistant — Liquid Glass design system.
+   Dark is the flagship theme; light is intentionally designed, not inverted.
+   Backward-compatible aliases (--text, --text-h, --bg, --border, --accent,
+   --accent-bg, --accent-border, --social-bg, --shadow) map onto the tokens. */
 
+:root {
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --blur-sm: blur(8px);
+  --blur-md: blur(16px);
+  --blur-lg: blur(28px);
+
+  --motion-fast: 120ms ease;
+  --motion-base: 180ms ease;
+
+  font: 17px/150% var(--sans);
+  letter-spacing: 0.12px;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
 
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
+  --bg-base: #060a1c;
+  --bg-glow-1: rgba(99, 102, 241, 0.3);
+  --bg-glow-2: rgba(168, 85, 247, 0.22);
+  --bg-glow-3: rgba(56, 189, 248, 0.16);
+  --bg-glow-4: rgba(236, 72, 153, 0.13);
+  --bg-glow-5: rgba(45, 212, 191, 0.1);
+  --bg-glow-6: rgba(253, 214, 130, 0.08);
+
+  --surface: rgba(255, 255, 255, 0.05);
+  --surface-elevated: rgba(255, 255, 255, 0.08);
+  /* Pass 2 — three neutral glass material levels (dark keeps its indigo
+     character; color comes from the atmosphere, not the glass itself).
+     glass-regular:  normal cards, form/table/filter/list surfaces.
+     glass-elevated: major panels, empty states (a touch more separation).
+     glass-floating: header/nav, dialogs (clearest, strongest edge light). */
+  --glass: rgba(16, 20, 40, 0.4);
+  --glass-elevated: rgba(20, 25, 50, 0.52);
+  --glass-strong: rgba(24, 29, 56, 0.7);
+  --glass-sheen: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.07),
+    rgba(255, 255, 255, 0.02) 30%,
+    rgba(255, 255, 255, 0) 55%
+  );
+
+  --border: rgba(255, 255, 255, 0.07);
+  --border-highlight: rgba(255, 255, 255, 0.14);
+  --border-glass: rgba(255, 255, 255, 0.11);
+
+  --text-primary: #f1f3fa;
+  --text-secondary: #a7aec4;
+  --text-muted: #6f7690;
+
+  --accent: #a5b4fc;
+  --accent-strong: #c4b5fd;
+  --accent-bg: rgba(165, 180, 252, 0.13);
+  --accent-border: rgba(165, 180, 252, 0.38);
+
+  --cyan: #67e8f9;
+  --cyan-bg: rgba(103, 232, 249, 0.12);
+  --purple: #c4b5fd;
+  --purple-bg: rgba(196, 181, 253, 0.13);
+  --pink: #f9a8d4;
+  --pink-bg: rgba(249, 168, 212, 0.12);
+  --orange: #fdba74;
+  --orange-bg: rgba(253, 186, 116, 0.12);
+
+  --success: #86efac;
+  --success-bg: rgba(134, 239, 172, 0.12);
+  --warning: #fcd34d;
+  --warning-bg: rgba(252, 211, 77, 0.12);
+  --danger: #fda4af;
+  --danger-bg: rgba(253, 164, 175, 0.12);
+  --info: #7dd3fc;
+  --info-bg: rgba(125, 211, 252, 0.12);
+  --focus: #c4b5fd;
+
+  --shadow-sm: 0 1px 2px rgba(2, 6, 23, 0.30);
+  --shadow-md: 0 18px 40px -24px rgba(2, 6, 23, 0.38);
+  --shadow-lg: 0 24px 60px -28px rgba(2, 6, 23, 0.42);
+
+  --text: var(--text-secondary);
+  --text-h: var(--text-primary);
+  --bg: var(--bg-base);
+  --code-bg: rgba(255, 255, 255, 0.06);
+  --social-bg: var(--surface);
+  --shadow: var(--shadow-md);
 }
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  /* Vivid-but-pastel atmosphere: strong enough to transmit through glass,
+     still soft and calm. Never neon. */
+  --bg-base: #dde3f5;
+  --bg-glow-1: rgba(129, 140, 248, 0.5);
+  --bg-glow-2: rgba(192, 132, 252, 0.46);
+  --bg-glow-3: rgba(125, 211, 252, 0.48);
+  --bg-glow-4: rgba(249, 168, 212, 0.44);
+  --bg-glow-5: rgba(253, 214, 130, 0.46);
+  --bg-glow-6: rgba(153, 246, 228, 0.26);
+
+  --surface: rgba(255, 255, 255, 0.38);
+  --surface-elevated: rgba(255, 255, 255, 0.5);
+  /* L1/L2/L3 tuned for transmission: pastel environment must read through. */
+  --glass: rgba(255, 255, 255, 0.24);
+  --glass-elevated: rgba(255, 255, 255, 0.32);
+  --glass-strong: rgba(255, 255, 255, 0.48);
+  --glass-sheen: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.25),
+    rgba(255, 255, 255, 0.07) 32%,
+    rgba(255, 255, 255, 0) 58%
+  );
+
+  --border: rgba(30, 41, 82, 0.09);
+  --border-highlight: rgba(255, 255, 255, 0.8);
+  --border-glass: rgba(30, 41, 82, 0.10);
+
+  --text-primary: #1a2138;
+  --text-secondary: #4c5672;
+  --text-muted: #828aa3;
+
+  --accent: #6d5ef0;
+  --accent-strong: #7c3aed;
+  --accent-bg: rgba(109, 94, 240, 0.10);
+  --accent-border: rgba(109, 94, 240, 0.32);
+
+  --success: #15803d;
+  --success-bg: rgba(21, 128, 61, 0.10);
+  --warning: #b45309;
+  --warning-bg: rgba(180, 83, 9, 0.10);
+  --danger: #be123c;
+  --danger-bg: rgba(190, 18, 60, 0.08);
+  --info: #0369a1;
+  --info-bg: rgba(3, 105, 161, 0.10);
+  --cyan: #0e7490;
+  --cyan-bg: rgba(14, 116, 144, 0.10);
+  --purple: #7c3aed;
+  --purple-bg: rgba(124, 58, 237, 0.10);
+  --pink: #be185d;
+  --pink-bg: rgba(190, 24, 93, 0.10);
+  --orange: #c2410c;
+  --orange-bg: rgba(194, 65, 12, 0.10);
+  --focus: #6d5ef0;
+
+  --shadow-sm: 0 1px 2px rgba(30, 41, 82, 0.07);
+  --shadow-md: 0 18px 40px -28px rgba(30, 41, 82, 0.16);
+  --shadow-lg: 0 24px 60px -32px rgba(30, 41, 82, 0.20);
+
+  --text: var(--text-secondary);
+  --text-h: var(--text-primary);
+  --bg: var(--bg-base);
+  --code-bg: rgba(30, 41, 82, 0.06);
+  --social-bg: var(--surface);
+  --shadow: var(--shadow-md);
+}
+
+/* ---------- base ---------- */
 
 body {
   margin: 0;
+  color: var(--text);
+  /* Pass 1 — atmospheric environment: a few large, very soft asymmetric
+     fields of environmental light. Quiet enough that content stays primary. */
+  background:
+    radial-gradient(110rem 72rem at 10% -26%, var(--bg-glow-1), transparent 80%),
+    radial-gradient(100rem 68rem at 92% 4%, var(--bg-glow-2), transparent 80%),
+    radial-gradient(115rem 76rem at 72% 62%, var(--bg-glow-3), transparent 82%),
+    radial-gradient(90rem 62rem at 4% 90%, var(--bg-glow-5), transparent 80%),
+    radial-gradient(105rem 70rem at 45% 122%, var(--bg-glow-4), transparent 82%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 30%),
+    var(--bg-base);
+  background-attachment: fixed;
+  min-height: 100svh;
+}
+
+:root[data-theme='light'] body {
+  background:
+    radial-gradient(110rem 72rem at 8% -24%, var(--bg-glow-3), transparent 80%),
+    radial-gradient(100rem 68rem at 94% 4%, var(--bg-glow-2), transparent 80%),
+    radial-gradient(115rem 76rem at 70% 58%, var(--bg-glow-4), transparent 82%),
+    radial-gradient(90rem 62rem at 2% 88%, var(--bg-glow-6), transparent 80%),
+    radial-gradient(105rem 70rem at 48% 122%, var(--bg-glow-5), transparent 82%),
+    radial-gradient(85rem 54rem at 52% -30%, rgba(255, 255, 255, 0.9), transparent 65%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0) 34%),
+    var(--bg-base);
+  background-attachment: fixed;
+}
+
+/* ---------- environmental ribbon forms ---------- */
+
+/* Large translucent curved forms floating behind the interface: soft light
+   ribbons, not decoration. Static, non-interactive, extremely low contrast.
+   They paint above the canvas background but below all content. */
+body::before,
+body::after {
+  content: '';
+  position: fixed;
+  pointer-events: none;
+  z-index: -1;
+}
+
+body::before {
+  top: -6rem;
+  right: 2%;
+  width: 64rem;
+  height: 40rem;
+  border-radius: 50%;
+  transform: rotate(-14deg);
+  background:
+    radial-gradient(closest-side, rgba(255, 255, 255, 0.75), transparent 72%),
+    repeating-radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.22) 0 3px, transparent 3px 110px),
+    linear-gradient(115deg, rgba(125, 211, 252, 0.42), rgba(192, 132, 252, 0.36) 55%, rgba(249, 168, 212, 0.32));
+  filter: blur(18px);
+}
+
+body::after {
+  bottom: -8rem;
+  left: 4%;
+  width: 70rem;
+  height: 44rem;
+  border-radius: 50%;
+  transform: rotate(12deg);
+  background:
+    radial-gradient(closest-side, rgba(253, 214, 130, 0.34), transparent 70%),
+    repeating-radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.2) 0 3px, transparent 3px 120px),
+    linear-gradient(295deg, rgba(249, 168, 212, 0.32), rgba(129, 140, 248, 0.34) 60%, rgba(153, 246, 228, 0.22));
+  filter: blur(20px);
+}
+
+:root[data-theme='dark'] body::before {
+  background:
+    radial-gradient(closest-side, rgba(165, 180, 252, 0.10), transparent 72%),
+    linear-gradient(115deg, rgba(56, 189, 248, 0.12), rgba(168, 85, 247, 0.12) 55%, rgba(236, 72, 153, 0.08));
+}
+
+:root[data-theme='dark'] body::after {
+  background:
+    radial-gradient(closest-side, rgba(253, 214, 130, 0.06), transparent 70%),
+    linear-gradient(295deg, rgba(236, 72, 153, 0.08), rgba(99, 102, 241, 0.10) 60%, rgba(45, 212, 191, 0.05));
 }
 
 h1,
-h2 {
+h2,
+h3 {
   font-family: var(--heading);
-  font-weight: 500;
   color: var(--text-h);
+  margin: 0;
 }
 
 h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
+  font-size: 38px;
+  line-height: 1.12;
+  letter-spacing: -0.5px;
+  font-weight: 600;
 }
+
 h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
+  font-size: 21px;
+  line-height: 1.25;
+  letter-spacing: -0.2px;
+  font-weight: 600;
 }
+
+h3 {
+  font-size: 17px;
+  font-weight: 600;
+}
+
 p {
   margin: 0;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
+a {
+  color: var(--accent);
 }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+:focus {
+  outline: none;
 }
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+::selection {
+  background: var(--accent-bg);
+}
+
+/* ---------- layout primitives ---------- */
 
 .page {
   max-width: 72rem;
   margin: 0 auto;
-  padding: 32px 24px 64px;
+  /* Unified page rhythm: the legacy 5rem bottom air consumed 85px of every
+     page for no structural reason (the dashboard already overrode it to
+     24px). Bottom whitespace never affects natural scrolling — content
+     taller than the viewport still scrolls normally. */
+  padding: var(--space-6) var(--space-5) var(--space-5);
 }
 
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
 }
 
 .page-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
+/* Header action-group balance: the secondary danger action keeps its ghost
+   styling and height, with a modestly wider horizontal footprint so it reads
+   as one group with the primary action. Scoped to page headers only. */
+.page-actions > .button--danger {
+  padding-left: var(--space-5);
+  padding-right: var(--space-5);
+}
+
 .page-title {
-  font-size: 32px;
-  letter-spacing: -0.5px;
-  margin: 0 0 4px;
+  margin-bottom: var(--space-1);
 }
 
 .page-subtitle {
-  color: var(--text);
+  color: var(--text-secondary);
+  font-size: 16px;
+}
+
+.back-link {
+  display: inline-block;
+  margin-bottom: var(--space-4);
 }
 
 .link {
   color: var(--accent);
   text-decoration: none;
+  transition: color var(--motion-fast);
 }
 
 .link:hover {
+  color: var(--accent-strong);
   text-decoration: underline;
 }
 
-.back-link {
-  display: inline-block;
-  margin-bottom: 16px;
+.muted {
+  color: var(--text-secondary);
 }
 
+/* ---------- buttons ---------- */
+
 .button {
-  display: inline-block;
-  padding: 8px 16px;
-  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 9px 18px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text-h);
+  background: var(--surface);
+  color: var(--text-primary);
   font: inherit;
   font-size: 15px;
+  font-weight: 600;
   cursor: pointer;
   text-decoration: none;
   text-align: center;
+  transition:
+    background var(--motion-fast),
+    border-color var(--motion-fast),
+    transform var(--motion-fast),
+    box-shadow var(--motion-fast);
 }
 
 .button:hover:not(:disabled) {
   border-color: var(--accent-border);
+  background: var(--surface-elevated);
+}
+
+.button:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .button:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: default;
 }
 
+/* Primary glass CTA: atmospheric violet-tinted glass shared by
+   .button--glass (Add entry points) and .button--primary (form submits,
+   edit links, dialog confirms) — one treatment, two names. Sheen + accent
+   wash over the neutral glass token lets the environment read through;
+   no backdrop blur, per the Control material role. Restrained inset
+   light + soft shadow keep it clearly readable as the primary action in
+   both themes. (Former opaque lavender gradient retired.) */
+.button--glass,
 .button--primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  background:
+    var(--glass-sheen),
+    linear-gradient(180deg, var(--accent-bg), var(--accent-bg)),
+    var(--glass);
+  border: 1px solid var(--accent-border);
+  border-top-color: var(--border-highlight);
+  color: var(--text-primary);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    var(--shadow-sm);
 }
 
+.button--glass:hover:not(:disabled),
+.button--primary:hover:not(:disabled) {
+  border-color: var(--accent-strong);
+  background:
+    var(--glass-sheen),
+    linear-gradient(180deg, var(--accent-border), var(--accent-border)),
+    var(--glass);
+}
+
+.button--glass:active:not(:disabled),
+.button--primary:active:not(:disabled) {
+  transform: translateY(1px);
+  filter: brightness(0.98);
+}
+
+/* NOTE for layered glass backgrounds: translucent color tokens must be
+   wrapped as single-stop gradients — a bare color is only valid in the
+   final background layer, and a mid-stack color would invalidate the
+   whole declaration. */
+
+/* Secondary glass: neutral translucent pill for Cancel, Clear filters,
+   Retry, Dropzone actions and other secondary actions — same geometry and
+   glass language as primary, without the violet tint. No backdrop blur
+   (Control role). */
 .button--ghost {
-  background: transparent;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 60%),
+    var(--surface);
+  border: 1px solid var(--border);
+  border-top-color: var(--border-highlight);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    var(--shadow-sm);
+}
+
+.button--ghost:hover:not(:disabled) {
+  border-color: var(--border-highlight);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 60%),
+    var(--surface-elevated);
 }
 
 .button--danger {
-  color: #b42318;
+  color: var(--danger);
 }
+
+/* Destructive glass: the secondary architecture with a restrained red
+   wash + danger text, following the badge precedent (tint + neutral
+   border + semantic text). The explicit hover keeps the wash from being
+   flattened by the secondary hover treatment. */
+.button--ghost.button--danger {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 60%),
+    linear-gradient(180deg, var(--danger-bg), var(--danger-bg)),
+    var(--glass);
+  color: var(--danger);
+}
+
+.button--ghost.button--danger:hover:not(:disabled) {
+  border-color: var(--danger);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 60%),
+    linear-gradient(180deg, var(--danger-bg), var(--danger-bg)),
+    var(--surface-elevated);
+}
+
+/* ---------- inputs ---------- */
 
 .input {
   width: 100%;
   box-sizing: border-box;
-  padding: 8px 12px;
-  border-radius: 8px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text-h);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 55%),
+    var(--surface);
+  color: var(--text-primary);
   font: inherit;
   font-size: 15px;
+  /* Sub-pass B — recessed control: hairline border + restrained inner depth
+     so inputs sit inset into the L2 form workspace instead of reading as
+     solid boxes. Tokens and focus ring are unchanged. */
+  box-shadow:
+    inset 0 1px 2px rgba(2, 6, 23, 0.14),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+  transition:
+    border-color var(--motion-fast),
+    box-shadow var(--motion-fast),
+    background var(--motion-fast);
+}
+
+:root[data-theme='light'] .input {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.3)),
+    rgba(255, 255, 255, 0.45);
+  /* Sub-pass B — matching recessed depth for pearl theme. */
+  box-shadow:
+    inset 0 1px 2px rgba(30, 41, 82, 0.1),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+}
+
+.input:hover:not(:disabled) {
+  border-color: var(--border-highlight);
+}
+
+.input:focus {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+/* Sub-pass B — invalid state supports (never replaces) the error message. */
+.input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.input[aria-invalid='true']:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-bg);
 }
 
 .input:disabled {
@@ -197,150 +566,1234 @@ code {
 
 textarea.input {
   resize: vertical;
+  min-height: 5.5rem;
 }
 
+select.input {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%),
+    linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 13px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 2rem;
+}
+
+/* Native option popup: explicit opaque colors per theme. Option items
+   otherwise inherit the select's text color over a transparent background,
+   which some Chromium versions pair with a light popup surface (dark-mode
+   white-on-white until hover). Solid base + primary text guarantees a
+   readable listbox in both themes; the native select (keyboard, filtering)
+   is otherwise untouched. */
+select.input option {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+}
+
+input[type='file'].input {
+  padding: 8px 12px;
+}
+
+/* ---------- banners ---------- */
+
 .banner {
-  padding: 12px 16px;
-  border-radius: 8px;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
-  margin: 16px 0;
+  background: var(--surface);
+  margin: var(--space-4) 0;
 }
 
 .banner--loading {
-  background: var(--social-bg);
+  color: var(--text-secondary);
 }
 
 .banner--error {
-  border-color: #b42318;
-  color: #b42318;
+  border-color: var(--danger);
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 
 .banner--notice {
   background: var(--accent-bg);
   border-color: var(--accent-border);
+  color: var(--text-primary);
+}
+
+/* ---------- forms ---------- */
+
+.form {
+  max-width: 42rem;
+}
+
+.form--wide {
+  max-width: 64rem;
+}
+
+.form-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.form-column .form-section {
+  margin-bottom: 0;
+}
+
+/* LEVEL 1 — glass base: neutral translucent surface. */
+.form-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  margin: 0 0 var(--space-4);
+  min-width: 0;
+  background:
+    var(--glass-sheen),
+    var(--glass);
+  -webkit-backdrop-filter: blur(11px) saturate(1.15);
+  backdrop-filter: blur(11px) saturate(1.15);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    var(--shadow-md);
+}
+
+/* Keep fieldset legends in normal flow so section titles sit inside the
+   panel instead of straddling its border. Semantics are unchanged. */
+.form-section legend {
+  display: contents;
+  padding: 0;
+}
+
+.form-section > .section-title {
+  margin-bottom: var(--space-4);
 }
 
 .field {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
+}
+
+.field:last-child {
+  margin-bottom: 0;
 }
 
 .field-label {
   display: block;
   font-weight: 600;
-  margin-bottom: 4px;
-  color: var(--text-h);
+  font-size: 14px;
+  margin-bottom: var(--space-1);
+  color: var(--text-primary);
 }
 
 .field-hint {
-  font-size: 14px;
-  margin-top: 4px;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: var(--space-1);
 }
 
 .field-error {
   font-size: 14px;
-  color: #b42318;
-  margin-top: 4px;
-}
-
-.form {
-  max-width: 40rem;
-}
-
-.form-section {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px;
-  margin: 0 0 16px;
-}
-
-.form-section legend {
-  padding: 0 8px;
-  font-weight: 600;
-  color: var(--text-h);
+  color: var(--danger);
+  margin-top: var(--space-1);
 }
 
 .form-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin-top: 16px;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  /* Sub-pass B — quiet hairline separation between the L2 form workspace
+     and its actions. Layout and responsive behavior are unchanged. */
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-4);
 }
 
-.stage-badge {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 999px;
+/* ---------- tables ---------- */
+
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    var(--glass-sheen),
+    var(--glass);
+  -webkit-backdrop-filter: blur(11px) saturate(1.15);
+  backdrop-filter: blur(11px) saturate(1.15);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    var(--shadow-md);
+  margin-top: var(--space-2);
+}
+
+.table {
+  width: 100%;
+  min-width: 44rem;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 12px var(--space-4);
+  border-top: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+/* Material architecture: the table header is transparent content inside
+   the .table-scroll glass workspace — typography plus a separator, never
+   an opaque slab or second glass layer. */
+.table thead th {
+  border-top: none;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  background: none;
+}
+
+.table tbody tr {
+  position: relative;
+  transition: background var(--motion-fast);
+}
+
+/* Single hairline between a transparent header and the first body row:
+   the header owns the bottom border, so the first body cells shed theirs. */
+.table tbody tr:first-child td {
+  border-top: none;
+}
+
+.table tbody tr:hover {
   background: var(--accent-bg);
-  border: 1px solid var(--accent-border);
-  font-size: 14px;
+}
+
+/* Row-level navigation without changing table composition: the record links
+   stretch to cover the row, so clicking anywhere on the record follows the
+   existing detail link. Keyboard users Tab to the link itself (native focus
+   + Enter); sort controls live in thead and are unaffected. If relative tr
+   positioning is unsupported, the links simply behave as before. */
+.table .row-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.sort-button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  font-weight: 700;
+  color: inherit;
+  cursor: pointer;
   white-space: nowrap;
 }
 
+/* ---------- badges ---------- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.badge--accent {
+  color: var(--accent-strong);
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+}
+
+.badge--info {
+  color: var(--info);
+  background: var(--info-bg);
+  border-color: var(--border);
+}
+
+.badge--success {
+  color: var(--success);
+  background: var(--success-bg);
+  border-color: var(--border);
+}
+
+.badge--warning {
+  color: var(--warning);
+  background: var(--warning-bg);
+  border-color: var(--border);
+}
+
+.badge--danger {
+  color: var(--danger);
+  background: var(--danger-bg);
+  border-color: var(--border);
+}
+
+.badge--neutral {
+  color: var(--text-secondary);
+  background: var(--surface);
+}
+
+:root[data-theme='dark'] .badge--accent {
+  color: var(--accent);
+}
+
+/* ---------- detail lists ---------- */
+
 .detail-list {
-  margin: 24px 0;
+  margin: var(--space-5) 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    var(--glass-sheen),
+    var(--glass);
+  -webkit-backdrop-filter: blur(11px) saturate(1.15);
+  backdrop-filter: blur(11px) saturate(1.15);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    var(--shadow-md);
+  padding: var(--space-2) var(--space-5);
 }
 
 .detail-list > div {
   display: grid;
   grid-template-columns: 12rem 1fr;
-  gap: 16px;
-  padding: 8px 0;
+  gap: var(--space-4);
+  padding: 12px 0;
   border-top: 1px solid var(--border);
+}
+
+.detail-list > div:first-child {
+  border-top: none;
 }
 
 .detail-list dt {
   font-weight: 600;
-  color: var(--text-h);
+  font-size: 14px;
+  color: var(--text-secondary);
 }
 
 .detail-list dd {
   margin: 0;
   white-space: pre-wrap;
+  color: var(--text-primary);
 }
 
+/* ---------- document rows ---------- */
+
+/* Sub-pass A — document rows live inside the same L1 glass surface language
+   as tables and detail lists (applies coherently wherever shared). */
 .document-list {
   list-style: none;
-  margin: 16px 0 0;
-  padding: 0;
+  margin: var(--space-4) 0 0;
+  padding: var(--space-2) var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    var(--glass-sheen),
+    var(--glass);
+  -webkit-backdrop-filter: blur(11px) saturate(1.15);
+  backdrop-filter: blur(11px) saturate(1.15);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    var(--shadow-md);
 }
 
 .document-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
+  gap: var(--space-4);
   padding: 12px 0;
   border-top: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  transition: background var(--motion-fast);
+}
+
+.document-row:hover {
+  background: var(--accent-bg);
+}
+
+/* Sub-pass B — the in-row replace picker stays compact next to Remove. */
+.document-row .field {
+  margin-bottom: 0;
+}
+
+.document-row .dropzone {
+  padding: var(--space-2) var(--space-3);
+  gap: var(--space-2);
+}
+
+.document-row .dropzone-text strong {
+  font-size: 14px;
+}
+
+.document-row:first-child {
+  border-top: none;
 }
 
 .document-name {
   font-size: 14px;
-  color: var(--text);
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* Pending document intent within the Edit session (staged, not yet saved). */
+.document-pending {
+  font-size: 13px;
+  color: var(--warning);
+  margin-top: 2px;
 }
 
 .document-actions {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
 .document-manager {
-  max-width: 40rem;
-  margin-top: 32px;
+  max-width: 42rem;
+  margin-top: var(--space-6);
 }
 
-.muted {
-  color: var(--text);
+.document-manager > h2 {
+  margin-bottom: var(--space-3);
 }
 
+.document-slot {
+  margin-bottom: var(--space-3);
+}
+
+.document-slot .field {
+  margin-bottom: 0;
+}
+
+/* Sub-pass B — manager slots form one glass workspace: each slot is an L1
+   panel, so rows inside drop their own separators. */
+.document-manager .document-slot {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    var(--glass-sheen),
+    var(--glass);
+  -webkit-backdrop-filter: blur(11px) saturate(1.15);
+  backdrop-filter: blur(11px) saturate(1.15);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    var(--shadow-md);
+  padding: var(--space-3) var(--space-4);
+}
+
+.document-manager .document-row {
+  border-top: none;
+  /* Optical alignment: actions anchor to the top of the row (type label)
+     instead of the vertical center, so multi-line filenames below never drag
+     the action group downward. Detail-page rows keep centering. */
+  align-items: flex-start;
+}
+
+/* Manager rows are not clickable targets (the buttons are), so the row-level
+   hover wash is suppressed here: hovering Replace/Remove must not light up
+   the surrounding glass. Buttons keep their own subtle hover. Detail-page
+   document rows keep their hover treatment. */
+.document-manager .document-row:hover {
+  background: none;
+}
+
+/* Containment: the info block may shrink and unbreakable filenames may wrap
+   anywhere, so the action group always fits inside the row background.
+   Applies to manager and detail document rows alike (detail keeps its
+   centered alignment and composition; only overflow behavior changes). */
+.document-manager .document-row > div:first-child,
+.document-list .document-row > div:first-child {
+  min-width: 0;
+}
+
+.document-manager .document-name,
+.document-list .document-name {
+  overflow-wrap: anywhere;
+}
+
+/* Expanded replace picker sits below its compact row with workspace rhythm. */
+.document-manager .document-row + .field {
+  margin-top: var(--space-3);
+}
+
+/* ---------- empty states ---------- */
+
+/* LEVEL 2 — glass elevated: slightly more opaque, restrained highlight. */
 .empty-state {
   text-align: center;
-  padding: 48px 24px;
-  border: 1px dashed var(--border);
-  border-radius: 12px;
-  margin-top: 24px;
+  padding: var(--space-7) var(--space-5);
+  border: 1px dashed var(--border-highlight);
+  border-radius: var(--radius-lg);
+  background:
+    var(--glass-sheen),
+    var(--glass-elevated, var(--glass));
+  -webkit-backdrop-filter: blur(12px) saturate(1.15);
+  backdrop-filter: blur(12px) saturate(1.15);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.10),
+    var(--shadow-md);
+  margin-top: var(--space-5);
+}
+
+.empty-state h2 {
+  margin-bottom: var(--space-2);
 }
 
 .empty-state p {
-  margin: 8px 0 16px;
+  margin: 0 auto var(--space-4);
+  max-width: 30rem;
+  color: var(--text-secondary);
+}
+
+/* ---------- filters ---------- */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    var(--glass-sheen),
+    var(--glass);
+  -webkit-backdrop-filter: blur(11px) saturate(1.15);
+  backdrop-filter: blur(11px) saturate(1.15);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    var(--shadow-md);
+}
+
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 12rem;
+  flex: 1 1 12rem;
+}
+
+.filter-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* ---------- metric cards / panels ---------- */
+
+.metric-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-3);
+  margin: var(--space-4) 0 var(--space-6);
+}
+
+/* LEVEL 2 — glass elevated: same neutral material for every card.
+   Identity comes from the icon chip + a whisper of tint, not a gradient. */
+.metric-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-5) var(--space-4);
+  border-radius: 22px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  background:
+    var(--glass-sheen),
+    var(--glass);
+  -webkit-backdrop-filter: blur(11px) saturate(1.15);
+  backdrop-filter: blur(11px) saturate(1.15);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    var(--shadow-md);
+  transition:
+    box-shadow var(--motion-fast),
+    border-color var(--motion-fast);
+}
+
+/* Material architecture: standalone metric cards own exactly one glass
+   treatment (base rule above). No additive pseudo-element white overlay —
+   identity comes from the icon-chip and whisper tint, not stacked light.
+   (Former .metric-card::after pearlescent washes removed.) */
+
+.metric-card:hover {
+  border-color: var(--border-highlight);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    var(--shadow-lg);
+}
+
+.metric-value {
+  font-size: 36px;
+  line-height: 1.05;
+  font-weight: 650;
+  letter-spacing: -0.5px;
+  color: var(--text-primary);
+}
+
+.metric-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-4);
+  margin-bottom: var(--space-2);
+}
+
+/* Material architecture: pipeline/recent lists are transparent content.
+   The parent dashboard-panel owns the glass; rows use typography,
+   separators and hover only. No background, blur or shadow here. */
+.pipeline-list,
+.recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+.pipeline-row,
+.recent-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.pipeline-row:first-child,
+.recent-row:first-child {
+  border-top: none;
+}
+
+.pipeline-row .link {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.pipeline-count {
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 2rem;
+  text-align: right;
+}
+
+.recent-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 14px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+/* ---------- confirm dialog ---------- */
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 6, 14, 0.55);
+  /* Dialog backdrop context refinement: no backdrop blur, so the underlying
+     application stays recognizable behind the dialog. The translucent dim
+     above keeps the L3 panel dominant. Panel glass is untouched. */
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+  z-index: 50;
+}
+
+:root[data-theme='light'] .dialog-backdrop {
+  background: rgba(30, 41, 82, 0.32);
+}
+
+/* LEVEL 3 — glass floating: highest clarity, refined edge light, and the
+   same whisper of violet atmosphere as the header and metric cards so
+   dialogs read as native floating glass rather than a separate surface.
+   (Danger dialogs stay violet-neutral glass here — never red.) */
+.dialog-panel {
+  width: min(26rem, 100%);
+  border-radius: 22px;
+  border: 1px solid var(--border-glass, var(--border-highlight));
+  background:
+    var(--glass-sheen),
+    linear-gradient(180deg, var(--accent-bg), var(--accent-bg)),
+    var(--glass-strong);
+  -webkit-backdrop-filter: blur(22px) saturate(1.3);
+  backdrop-filter: blur(22px) saturate(1.3);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    var(--shadow-lg);
+  padding: var(--space-5);
+}
+
+.dialog-panel h2 {
+  margin-bottom: var(--space-2);
+  /* Sub-pass B — title/body hierarchy inside the L3 surface. Type scale and
+     wording are unchanged; danger dialogs stay neutral glass, never all-red. */
+  font-size: 19px;
+  letter-spacing: -0.2px;
+}
+
+.dialog-panel p {
+  color: var(--text-secondary);
+  margin-bottom: var(--space-5);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.badge--cyan {
+  color: var(--cyan);
+  background: var(--cyan-bg);
+  border-color: var(--border);
+}
+
+.badge--purple {
+  color: var(--purple);
+  background: var(--purple-bg);
+  border-color: var(--border);
+}
+
+.badge--pink {
+  color: var(--pink);
+  background: var(--pink-bg);
+  border-color: var(--border);
+}
+
+:root[data-theme='light'] .badge--accent {
+  color: var(--accent-strong);
+}
+
+/* ---------- icon chips ---------- */
+
+.icon-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-top-color: rgba(255, 255, 255, 0.55);
+  flex-shrink: 0;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -1px 0 rgba(30, 41, 82, 0.08),
+    0 4px 12px -8px rgba(30, 41, 82, 0.25);
+  overflow: hidden;
+}
+
+/* Material architecture: icon-chip gloss is a small local accent/control
+   treatment only — radial highlight confined to the chip, no backdrop
+   blur, no glass tokens. It must not be copied as a precedent for wider
+   white/glass layers elsewhere. */
+.icon-chip::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(90% 65% at 50% 0%, rgba(255, 255, 255, 0.55), transparent 65%);
+  pointer-events: none;
+}
+
+:root[data-theme='dark'] .icon-chip {
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.25),
+    0 6px 16px -8px rgba(0, 0, 0, 0.6);
+}
+
+.icon-chip--blue {
+  color: #0369a1;
+  background: linear-gradient(180deg, #e0f2fe, #bae6fd);
+}
+
+.icon-chip--green {
+  color: #15803d;
+  background: linear-gradient(180deg, #dcfce7, #bbf7d0);
+}
+
+.icon-chip--amber {
+  color: #b45309;
+  background: linear-gradient(180deg, #fef3c7, #fde68a);
+}
+
+.icon-chip--purple {
+  color: #7c3aed;
+  background: linear-gradient(180deg, #ede9fe, #ddd6fe);
+}
+
+.icon-chip--pink {
+  color: #be185d;
+  background: linear-gradient(180deg, #fce7f3, #fbcfe8);
+}
+
+.icon-chip--accent {
+  color: #5b4ee0;
+  background: linear-gradient(180deg, #e0e7ff, #c7d2fe);
+}
+
+:root[data-theme='dark'] .icon-chip--blue {
+  color: #7dd3fc;
+  background: linear-gradient(180deg, rgba(125, 211, 252, 0.28), rgba(125, 211, 252, 0.12));
+}
+
+:root[data-theme='dark'] .icon-chip--green {
+  color: #86efac;
+  background: linear-gradient(180deg, rgba(134, 239, 172, 0.28), rgba(134, 239, 172, 0.12));
+}
+
+:root[data-theme='dark'] .icon-chip--amber {
+  color: #fcd34d;
+  background: linear-gradient(180deg, rgba(252, 211, 77, 0.28), rgba(252, 211, 77, 0.12));
+}
+
+:root[data-theme='dark'] .icon-chip--purple {
+  color: #c4b5fd;
+  background: linear-gradient(180deg, rgba(196, 181, 253, 0.30), rgba(196, 181, 253, 0.12));
+}
+
+:root[data-theme='dark'] .icon-chip--pink {
+  color: #f9a8d4;
+  background: linear-gradient(180deg, rgba(249, 168, 212, 0.28), rgba(249, 168, 212, 0.12));
+}
+
+:root[data-theme='dark'] .icon-chip--accent {
+  color: #c4b5fd;
+  background: linear-gradient(180deg, rgba(165, 180, 252, 0.32), rgba(165, 180, 252, 0.12));
+}
+
+/* ---------- tinted metric cards ---------- */
+
+/* Four pieces of the same glass: only a whisper of identity tint. */
+.metric-card--blue {
+  background:
+    var(--glass-sheen),
+    linear-gradient(135deg, rgba(125, 211, 252, 0.07), transparent 60%),
+    var(--glass);
+}
+
+.metric-card--green {
+  background:
+    var(--glass-sheen),
+    linear-gradient(135deg, rgba(134, 239, 172, 0.07), transparent 60%),
+    var(--glass);
+}
+
+.metric-card--amber {
+  background:
+    var(--glass-sheen),
+    linear-gradient(135deg, rgba(252, 211, 77, 0.07), transparent 60%),
+    var(--glass);
+}
+
+.metric-card--purple {
+  background:
+    var(--glass-sheen),
+    linear-gradient(135deg, rgba(196, 181, 253, 0.07), transparent 60%),
+    var(--glass);
+}
+
+.metric-card--pink {
+  background:
+    var(--glass-sheen),
+    linear-gradient(135deg, rgba(249, 168, 212, 0.07), transparent 60%),
+    var(--glass);
+}
+
+.metric-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+/* Reference composition: icon bubble on the left, number + label stacked
+   on the right. Pure re-flow of the existing elements (no DOM change):
+   the head dissolves and its children join the card grid. Cards without an
+   icon keep their stacked layout. */
+.metric-card:has(.metric-card-head) {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: var(--space-3);
+  /* Value → label rhythm: 3px between the stacked rows (one step tighter
+     than the base 4px gap inherited from .metric-card). Non-headed cards
+     keep the base gap; nothing else changes. */
+  row-gap: 3px;
+  align-items: center;
+}
+
+.metric-card:has(.metric-card-head) .metric-card-head {
+  display: contents;
+}
+
+.metric-card:has(.metric-card-head) .icon-chip {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+
+.metric-card:has(.metric-card-head) .metric-value {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.metric-card:has(.metric-card-head) .metric-label {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+/* ---------- section titles ---------- */
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text-primary);
+  margin-bottom: var(--space-3);
+}
+
+.section-title .icon-chip {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 10px;
+}
+
+/* ---------- two-column forms ---------- */
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.form-grid .form-actions {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 900px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- detail workspace ---------- */
+
+/* Application Detail two-column workspace: the existing detail-list and
+   document-list surfaces sit side by side (both keep their approved L2
+   material); only column rhythm is added here. Stacks below 900px, same
+   breakpoint as the application forms. */
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.detail-grid section > h2 {
+  margin-bottom: var(--space-3);
+}
+
+.detail-grid .detail-list,
+.detail-grid .document-list {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+@media (max-width: 900px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* DocumentManager inside the Edit form's right column: fill the column and
+   drop the standalone top spacing since the fieldset panel owns rhythm. */
+.form-column .document-manager {
+  max-width: none;
+  margin-top: 0;
+}
+
+/* In-form slots shed their own panels (the fieldset is the workspace):
+   transparent rows with quiet hairline separation instead of nested glass. */
+.form-column .document-manager .document-slot {
+  border: none;
+  border-radius: 0;
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+  padding: var(--space-2) 0;
+  margin-bottom: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.form-column .document-manager .document-slot:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.form-column .document-slot:last-child {
+  margin-bottom: 0;
+}
+
+/* ---------- dropzone ---------- */
+
+/* Material architecture: dropzone is a Control, not glass. Flat surface
+   fill with a dashed interaction boundary; no sheen overlay, no blur. */
+.dropzone {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--border-highlight);
+  background: var(--surface);
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  transition:
+    border-color var(--motion-fast),
+    background var(--motion-fast),
+    box-shadow var(--motion-fast);
+}
+
+.dropzone:hover {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.dropzone--over {
+  border-color: var(--accent-strong, var(--accent-border));
+  background: var(--accent-bg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.dropzone:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.dropzone:has(input:disabled) {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.dropzone input[type='file'],
+.dropzone-selected input[type='file'] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.dropzone-text {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.dropzone-text strong {
+  display: block;
+  color: var(--text-primary);
+  font-size: 15px;
+}
+
+.dropzone-file {
+  font-size: 13px;
+  color: var(--accent-strong);
+  margin-top: 2px;
+}
+
+:root[data-theme='dark'] .dropzone-file {
+  color: var(--accent);
+}
+
+@media (max-width: 900px) {
+  .page {
+    padding: var(--space-5) var(--space-4) 4rem;
+  }
+
+  h1,
+  .page-title {
+    font-size: 30px;
+  }
+
+  .page-header {
+    flex-direction: column;
+  }
+
+  .detail-list > div {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+
+  .filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filter-field {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    font-size: 16px;
+  }
+
+  .page-actions {
+    width: 100%;
+  }
+
+  .page-actions .button {
+    flex: 1;
+  }
+
+  .form-actions {
+    flex-direction: column-reverse;
+  }
+
+  .form-actions .button {
+    width: 100%;
+  }
+
+  .document-row,
+  .recent-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .metric-cards {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* ---------- M8-A Liquid Glass refinement ---------- */
+
+/* Hero: calm premium hierarchy over atmosphere. */
+.dashboard-hero .page-title {
+  text-shadow: 0 1px 24px rgba(99, 102, 241, 0.25);
+}
+
+:root[data-theme='light'] .dashboard-hero .page-title {
+  color: #141a33;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+/* Material architecture: no frosted header overlay. The header stays
+   transparent content (typography + hairline above); .table-scroll owns
+   the single glass treatment. (Former gradient slab fills removed.) */
+
+/* Pipeline stays calm: a muted accent fill, readable counts. */
+.pipeline-fill {
+  background: linear-gradient(90deg, var(--accent-border), var(--accent));
+}
+
+/* Per-stage pipeline fills reuse the existing semantic tone colors, so each
+   bar carries quiet stage identity without invented data. */
+.pipeline-row[data-stage='Applied'] .pipeline-fill { background: var(--info); }
+.pipeline-row[data-stage='Recruiter Screening'] .pipeline-fill { background: var(--cyan); }
+.pipeline-row[data-stage='Interview 1'] .pipeline-fill,
+.pipeline-row[data-stage='Interview 2'] .pipeline-fill { background: var(--purple); }
+.pipeline-row[data-stage='Final Interview'] .pipeline-fill { background: var(--pink); }
+.pipeline-row[data-stage='Offer'] .pipeline-fill { background: var(--success); }
+.pipeline-row[data-stage='Rejected'] .pipeline-fill { background: var(--danger); }
+.pipeline-row[data-stage='Withdrawn'] .pipeline-fill { background: var(--text-muted); }
+
+.pipeline-bar {
+  background: rgba(127, 140, 180, 0.16);
+  box-shadow: inset 0 1px 2px rgba(2, 6, 23, 0.12);
+}
+
+/* Status badges: translucent glass pills with inner highlight. */
+.badge {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+:root[data-theme='dark'] .badge {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+/* Material architecture: banners are feedback content, not glass workspaces.
+   Flat semantic fills with a border; no sheen, no backdrop blur — so they
+   can render inside or outside a Glass workspace without stacking blur. */
+.banner {
+  background: var(--surface);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Light-mode glass keeps a single soft top light + elevation. This
+   box-shadow replaces (not adds to) the base inset highlight. Only true
+   Glass workspaces are listed — transparent content lists excluded. */
+:root[data-theme='light'] .metric-card,
+:root[data-theme='light'] .form-section,
+:root[data-theme='light'] .table-scroll,
+:root[data-theme='light'] .filters,
+:root[data-theme='light'] .detail-list,
+:root[data-theme='light'] .document-list,
+:root[data-theme='light'] .dashboard-panel,
+:root[data-theme='light'] .empty-state {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 18px 40px -28px rgba(30, 41, 82, 0.18);
+}
+
+/* ---------- motion safety ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import type { ConnectionStatus } from '../../../shared/domain/person.js'
 import { ApiError } from '../../api/client.js'
+import { useConfirm } from '../../components/common/ConfirmDialog.js'
 import { StatusBanner } from '../../components/common/StatusBanner.js'
 import { PersonForm, type PersonFormValues } from './PersonForm.js'
 import { createPerson } from './peopleApi.js'
@@ -29,10 +30,18 @@ export function AddPersonPage() {
   const [busy, setBusy] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
+  const { confirm, dialog } = useConfirm()
 
-  const handleCancel = () => {
-    if (dirty && !window.confirm('Discard unsaved changes?')) {
-      return
+  const handleCancel = async () => {
+    if (dirty) {
+      const confirmed = await confirm({
+        title: 'Discard changes?',
+        message: 'You have unsaved changes. Leave without saving them?',
+        confirmLabel: 'Discard',
+      })
+      if (!confirmed) {
+        return
+      }
     }
     void navigate('/people')
   }
@@ -65,7 +74,7 @@ export function AddPersonPage() {
   return (
     <div className="page">
       <Link className="link back-link" to="/people">
-        ← People
+        ← Back to Networking
       </Link>
       <h1 className="page-title">Add Person</h1>
       {busy ? <StatusBanner tone="loading">Saving person…</StatusBanner> : null}
@@ -78,6 +87,7 @@ export function AddPersonPage() {
         onDirtyChange={setDirty}
         onSubmit={(values) => void handleSubmit(values)}
       />
+      {dialog}
     </div>
   )
 }

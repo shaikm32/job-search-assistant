@@ -231,6 +231,54 @@ Use shared TypeScript definitions where practical.
 
 ---
 
+# 3.5 Visual and Material Architecture
+
+The product specification defines the visual material architecture. Treat it as an architectural constraint, not optional styling guidance.
+
+The material vocabulary is intentionally limited to:
+
+```text
+Environment
+Glass Workspace
+Content / Ink
+Control
+Floating
+```
+
+Governing principle:
+
+> **Structural hierarchy ≠ material hierarchy.**
+
+Apply these rules:
+
+- Content is transparent by default.
+- A logical workspace should have a clear Glass owner.
+- Do not stack Glass surfaces merely because components are nested.
+- Only intentional Glass/Floating surfaces should own backdrop blur.
+- Do not apply backdrop blur to repeated rows, list items, table rows, or ordinary form controls.
+- Controls should provide clear interaction boundaries without becoming miniature glass workspaces.
+- Use typography, spacing, separators, borders, and accent ink before adding another visual surface.
+- Avoid additive white overlays that make nested content appear opaque.
+- Reuse the established material roles for future modules instead of inventing new surface categories without architectural justification.
+
+The intended composition is:
+
+```text
+Environment
+      ↓
+Intentional Glass Workspace
+      ↓
+Content / Ink
+```
+
+with Controls and Floating surfaces used only for their defined purposes.
+
+When implementing or modifying UI, inspect the existing material ownership before changing visual styling. Do not solve a hierarchy problem by arbitrarily changing opacity values; first determine whether the component should be Glass, Content, Control, or Floating.
+
+Backdrop blur must remain limited to intentional Glass/Floating surfaces for both visual clarity and rendering performance.
+
+Preserve accessibility: readable content, visible focus states, usable controls, keyboard interaction, and reduced-motion behavior where applicable.
+
 # 4. Initial Repository Assessment
 
 Before modifying files:

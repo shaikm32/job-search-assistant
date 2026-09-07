@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { ApiError } from '../../api/client.js'
+import { useConfirm } from '../../components/common/ConfirmDialog.js'
 import { StatusBanner } from '../../components/common/StatusBanner.js'
+import { StatusBadge, stageTone } from '../../components/common/StatusBadge.js'
 import { deleteApplication } from './applicationsApi.js'
 import { fetchDocumentBlob } from './documentsApi.js'
 import { useApplication } from './useApplication.js'
@@ -22,9 +24,16 @@ export function ApplicationDetailPage() {
   const { status, detail, error, reload } = useApplication(id)
   const [actionError, setActionError] = useState<string | null>(null)
   const [openingId, setOpeningId] = useState<string | null>(null)
+  const { confirm, dialog } = useConfirm()
   const uploadError = (location.state as { uploadError?: string } | null)?.uploadError ?? null
+  // Latest-request-wins guard: overlapping Open clicks (e.g. two documents
+  // in flight) must not let a stale failure overwrite a newer success. Only
+  // the most recent request may set the error or clear the loading state.
+  const openRequestRef = useRef(0)
 
   const handleOpen = async (documentId: string, fallbackName: string) => {
+    const requestId = openRequestRef.current + 1
+    openRequestRef.current = requestId
     setOpeningId(documentId)
     setActionError(null)
     try {
@@ -33,18 +42,28 @@ export function ApplicationDetailPage() {
       window.open(url, '_blank', 'noopener')
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
     } catch (openError) {
-      setActionError(
-        openError instanceof ApiError
-          ? openError.message
-          : 'Something went wrong. Please try again.',
-      )
+      if (openRequestRef.current === requestId) {
+        setActionError(
+          openError instanceof ApiError
+            ? openError.message
+            : 'Something went wrong. Please try again.',
+        )
+      }
     } finally {
-      setOpeningId(null)
+      if (openRequestRef.current === requestId) {
+        setOpeningId(null)
+      }
     }
   }
 
   const handleDelete = async (applicationId: string) => {
-    if (!window.confirm('Delete this application and its attached documents? This cannot be undone.')) {
+    const confirmed = await confirm({
+      title: 'Delete application?',
+      message: 'This application and its attached documents will be permanently deleted. This cannot be undone.',
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (!confirmed) {
       return
     }
     setActionError(null)
@@ -95,7 +114,7 @@ export function ApplicationDetailPage() {
   return (
     <div className="page">
       <Link className="link back-link" to="/applications">
-        ← Applications
+        ← Back to Applications
       </Link>
       {uploadError ? <StatusBanner tone="error">{uploadError}</StatusBanner> : null}
       {actionError ? <StatusBanner tone="error">{actionError}</StatusBanner> : null}
@@ -119,67 +138,75 @@ export function ApplicationDetailPage() {
         </div>
       </div>
 
-      <dl className="detail-list">
-        <div>
-          <dt>Current stage</dt>
-          <dd>
-            <span className="stage-badge">{application.currentStage}</span>
-          </dd>
-        </div>
-        <div>
-          <dt>Location</dt>
-          <dd>{application.location}</dd>
-        </div>
-        <div>
-          <dt>Date applied</dt>
-          <dd>{application.dateApplied}</dd>
-        </div>
-        <div>
-          <dt>Job URL</dt>
-          <dd>
-            {application.jobUrl && isExternalHttpUrl(application.jobUrl) ? (
-              <a className="link" href={application.jobUrl} target="_blank" rel="noreferrer">
-                Open job posting
-              </a>
-            ) : (
-              '—'
-            )}
-          </dd>
-        </div>
-        <div>
-          <dt>Notes</dt>
-          <dd>{application.notes && application.notes.length > 0 ? application.notes : '—'}</dd>
-        </div>
-      </dl>
+      <div className="detail-grid">
+        <section aria-label="Application Details">
+          <h2>Application Details</h2>
+          <dl className="detail-list">
+            <div>
+              <dt>Current stage</dt>
+              <dd>
+                <StatusBadge tone={stageTone(application.currentStage)}>
+                  {application.currentStage}
+                </StatusBadge>
+              </dd>
+            </div>
+            <div>
+              <dt>Location</dt>
+              <dd>{application.location}</dd>
+            </div>
+            <div>
+              <dt>Date applied</dt>
+              <dd>{application.dateApplied}</dd>
+            </div>
+            <div>
+              <dt>Job URL</dt>
+              <dd>
+                {application.jobUrl && isExternalHttpUrl(application.jobUrl) ? (
+                  <a className="link" href={application.jobUrl} target="_blank" rel="noreferrer">
+                    Open job posting
+                  </a>
+                ) : (
+                  '—'
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt>Notes</dt>
+              <dd>{application.notes && application.notes.length > 0 ? application.notes : '—'}</dd>
+            </div>
+          </dl>
+        </section>
 
-      <section aria-label="Documents">
-        <h2>Documents</h2>
-        {documents.length === 0 ? (
-          <p className="muted">No documents attached yet.</p>
-        ) : (
-          <ul className="document-list">
-            {documents.map((document) => (
-              <li key={document.id} className="document-row">
-                <div>
-                  <strong>{document.documentType}</strong>
-                  <div className="document-name">
-                    {document.fileName}
-                    {!document.available ? ' (unavailable)' : null}
+        <section aria-label="Documents">
+          <h2>Documents</h2>
+          {documents.length === 0 ? (
+            <p className="muted">No documents attached yet.</p>
+          ) : (
+            <ul className="document-list">
+              {documents.map((document) => (
+                <li key={document.id} className="document-row">
+                  <div>
+                    <strong>{document.documentType}</strong>
+                    <div className="document-name">
+                      {document.fileName}
+                      {!document.available ? ' (unavailable)' : null}
+                    </div>
                   </div>
-                </div>
-                <button
-                  className="button button--ghost"
-                  type="button"
-                  disabled={!document.available || openingId === document.id}
-                  onClick={() => void handleOpen(document.id, document.fileName)}
-                >
-                  {openingId === document.id ? 'Opening…' : 'Open'}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+                  <button
+                    className="button button--ghost"
+                    type="button"
+                    disabled={!document.available || openingId === document.id}
+                    onClick={() => void handleOpen(document.id, document.fileName)}
+                  >
+                    {openingId === document.id ? 'Opening…' : 'Open'}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+      {dialog}
     </div>
   )
 }

@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { ApiError } from '../../api/client.js'
+import { useConfirm } from '../../components/common/ConfirmDialog.js'
 import { StatusBanner } from '../../components/common/StatusBanner.js'
+import { StatusBadge, connectionTone } from '../../components/common/StatusBadge.js'
 import { deletePerson } from './peopleApi.js'
 import { usePerson } from './usePerson.js'
 
@@ -19,9 +21,16 @@ export function PersonDetailPage() {
   const navigate = useNavigate()
   const { status, person, error, reload } = usePerson(id)
   const [actionError, setActionError] = useState<string | null>(null)
+  const { confirm, dialog } = useConfirm()
 
   const handleDelete = async (personId: string, personName: string) => {
-    if (!window.confirm(`Delete ${personName}? This cannot be undone.`)) {
+    const confirmed = await confirm({
+      title: 'Delete person?',
+      message: `Delete ${personName}? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (!confirmed) {
       return
     }
     setActionError(null)
@@ -50,7 +59,7 @@ export function PersonDetailPage() {
         <h1 className="page-title">Person not found</h1>
         <p>
           <Link className="link" to="/people">
-            ← People
+            ← Networking
           </Link>
         </p>
       </div>
@@ -70,7 +79,7 @@ export function PersonDetailPage() {
   return (
     <div className="page">
       <Link className="link back-link" to="/people">
-        ← People
+        ← Back to Networking
       </Link>
       {actionError ? <StatusBanner tone="error">{actionError}</StatusBanner> : null}
 
@@ -98,7 +107,11 @@ export function PersonDetailPage() {
       <dl className="detail-list">
         <div>
           <dt>Connection status</dt>
-          <dd>{person.connectionStatus}</dd>
+          <dd>
+            <StatusBadge tone={connectionTone(person.connectionStatus)}>
+              {person.connectionStatus}
+            </StatusBadge>
+          </dd>
         </div>
         <div>
           <dt>Person type</dt>
@@ -133,6 +146,7 @@ export function PersonDetailPage() {
           <dd>{person.notes && person.notes.length > 0 ? person.notes : '—'}</dd>
         </div>
       </dl>
+      {dialog}
     </div>
   )
 }

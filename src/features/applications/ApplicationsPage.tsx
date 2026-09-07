@@ -1,9 +1,9 @@
 import { Link } from 'react-router'
 import { APPLICATION_STAGES } from '../../../shared/domain/application.js'
 import { StatusBanner } from '../../components/common/StatusBanner.js'
+import { StatusBadge, stageTone } from '../../components/common/StatusBadge.js'
 import type { ApplicationDetail } from './applicationsApi.js'
 import { useApplications } from './useApplications.js'
-import './ApplicationsPage.css'
 
 const SORT_FIELDS = [
   { key: 'company', label: 'Company' },
@@ -49,7 +49,7 @@ export function ApplicationsPage() {
           <h1 className="page-title">Applications</h1>
           <p className="page-subtitle">Track every job application and the documents submitted with it.</p>
         </div>
-        <Link className="button button--primary" to="/applications/new">
+        <Link className="button button--glass" to="/applications/new">
           + Add Application
         </Link>
       </div>
@@ -107,7 +107,7 @@ export function ApplicationsPage() {
             Start building your job search pipeline. Add your first application to track its
             progress, documents, and current stage in one place.
           </p>
-          <Link className="button button--primary" to="/applications/new">
+          <Link className="button button--glass" to="/applications/new">
             + Add Application
           </Link>
         </div>
@@ -124,6 +124,7 @@ export function ApplicationsPage() {
       ) : null}
 
       {status === 'ready' && result.total > 0 ? (
+        <div className="table-scroll">
         <table className="table">
           <thead>
             <tr>
@@ -148,18 +149,20 @@ export function ApplicationsPage() {
             {result.applications.map((detail) => (
               <tr key={detail.application.id}>
                 <td>
-                  <Link className="link" to={`/applications/${detail.application.id}`}>
+                  <Link className="link row-link" to={`/applications/${detail.application.id}`}>
                     {detail.application.company}
                   </Link>
                 </td>
                 <td>
-                  <Link className="link" to={`/applications/${detail.application.id}`}>
+                  <Link className="link row-link" to={`/applications/${detail.application.id}`}>
                     {detail.application.jobTitle}
                   </Link>
                 </td>
                 <td>{detail.application.location}</td>
                 <td>
-                  <span className="stage-badge">{detail.application.currentStage}</span>
+                  <StatusBadge tone={stageTone(detail.application.currentStage)}>
+                    {detail.application.currentStage}
+                  </StatusBadge>
                 </td>
                 <td>{detail.application.dateApplied}</td>
                 <td>{documentAttached(detail, 'Resume') ? 'Attached' : '—'}</td>
@@ -168,6 +171,7 @@ export function ApplicationsPage() {
             ))}
           </tbody>
         </table>
+        </div>
       ) : null}
     </div>
   )

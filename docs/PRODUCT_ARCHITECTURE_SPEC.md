@@ -1076,21 +1076,244 @@ Do not use a persistent left sidebar.
 
 # 23. Visual Design
 
-The design should combine:
+The visual system should combine:
 
-- Modern SaaS product design
-- Productivity application usability
-- Dark-first visual identity
+- Modern productivity application usability
+- Premium glass-based visual language
+- Atmospheric environment
+- Strong content hierarchy
+- Dark and light themes
+- Accessibility and readability
+- Calm, restrained visual emphasis
 
-The application should feel:
+The visual system must remain structurally simple even as the application grows.
 
-- Modern
-- Clean
-- Professional
-- Focused
-- Comfortable for daily use
+## 23.1 Material Architecture
 
-## 23.1 Theme Support
+The UI uses a deliberately shallow material vocabulary:
+
+1. **Environment**
+2. **Glass Workspace**
+3. **Content / Ink**
+4. **Control**
+5. **Floating**
+
+The governing principle is:
+
+> **Structural hierarchy ≠ material hierarchy.**
+
+A component may be structurally nested inside several other components without each structural container becoming another visual surface.
+
+### Environment
+
+The Environment is the global atmospheric layer behind the application.
+
+It may contain:
+
+- Background color fields
+- Diffuse gradients
+- Atmospheric washes
+- Translucent decorative forms or ribbons
+
+The Environment is not an interactive surface and must not interfere with pointer or keyboard interaction.
+
+The environment should provide depth and atmosphere without requiring content to become opaque.
+
+### Glass Workspace
+
+A Glass Workspace is an intentional visual surface representing a logical workspace or independently meaningful grouping of content.
+
+A Glass Workspace may provide:
+
+- Translucent fill
+- Subtle border
+- Controlled shadow
+- Backdrop blur
+- Restrained highlight/sheen treatment where appropriate
+
+A Glass Workspace should own the glass material for its workspace.
+
+> **Do not place Glass inside Glass unless there is a genuine spatial or interaction reason.**
+
+Glass should be used at the workspace level rather than mechanically applied to every nested component.
+
+### Content / Ink
+
+Content is transparent by default.
+
+Content includes:
+
+- Lists
+- Table rows
+- Table headers
+- Pipeline rows
+- Recent-application rows
+- Document rows
+- Text/content groupings
+- Non-interactive metric content
+
+Content should establish hierarchy through:
+
+- Typography
+- Spacing
+- Dividers
+- Icons
+- Accent ink
+- Hover states
+
+Content should not acquire a background, blur, or shadow merely because it is nested inside a Glass Workspace.
+
+Repeated rows and items must not independently use backdrop blur.
+
+### Control
+
+Controls are interactive elements that need a clear interaction boundary.
+
+Examples include:
+
+- Inputs
+- Selects
+- Textareas
+- Dropzones
+- Buttons
+- Navigation controls
+- Interactive icon controls
+
+Controls may use:
+
+- Subtle fills
+- Borders
+- Focus rings
+- Hover states
+- Accent treatment
+
+Controls should not use backdrop blur by default.
+
+Controls should remain visually distinct and highly usable without becoming miniature glass workspaces.
+
+### Floating
+
+Floating surfaces represent UI that visually sits above the main application context.
+
+Examples include:
+
+- Application header
+- Confirmation dialogs
+- Other genuinely floating overlays introduced in the future
+
+Floating surfaces may use stronger glass treatment and blur than ordinary Glass Workspaces.
+
+Do not classify ordinary cards, rows, or controls as Floating merely for visual emphasis.
+
+## 23.2 Material Ownership Rules
+
+Apply these rules consistently across the application:
+
+- Content is transparent by default.
+- A logical workspace should have a clear Glass owner.
+- Do not stack Glass surfaces merely because components are nested.
+- Only intentional Glass/Floating surfaces should own backdrop blur.
+- Do not apply backdrop blur to repeated rows or individual form controls.
+- Use typography, spacing, separators, borders, and accent ink before introducing another visual surface.
+- Avoid multiple additive white overlays occupying the same visual area.
+- A component should become a Glass Workspace only when it represents a genuine spatial or interaction boundary.
+- New modules must reuse these material roles rather than inventing new surface categories without architectural justification.
+
+This material hierarchy is a product and UX architecture rule, not a requirement to preserve any particular CSS implementation or opacity value.
+
+## 23.3 Material Hierarchy by Existing MVP Surface
+
+The following establishes the intended material ownership for the current MVP.
+
+### Dashboard
+
+```text
+Environment
+    ↓
+Glass Workspace
+    ├── Pipeline rows → Content
+    ├── Recent application rows → Content
+    └── Networking content → Content
+```
+
+Independent dashboard metric cards may remain Glass when they function as standalone visual summaries.
+
+Pipeline stage rows must not appear as individual white or glass cards inside the Pipeline workspace.
+
+### Applications
+
+```text
+Applications workspace → Glass
+    ├── Table header → Content
+    └── Table rows → Content
+```
+
+Filters may remain a distinct Glass Workspace when they function as an independent filtering workspace.
+
+### Application Forms
+
+```text
+Form workspace → Glass
+    ├── Fields → Control
+    ├── Dropzones → Control
+    └── Document rows/slots → Content
+```
+
+### Application Detail
+
+Independent detail sections may be sibling Glass Workspaces.
+
+Document rows within a document workspace are Content.
+
+### People
+
+The People list/filter workspace may use Glass.
+
+Table headers and rows remain Content.
+
+Detail sections may use sibling Glass Workspaces where they represent independent information groupings.
+
+### Documents
+
+A standalone document manager may use Glass.
+
+Individual document rows remain Content.
+
+### Dialogs
+
+Confirmation dialogs are Floating surfaces.
+
+The backdrop provides context separation but should not obscure the underlying application unnecessarily.
+
+## 23.4 Visual Layering
+
+The intended conceptual composition is:
+
+```text
+Environment
+      ↓
+Intentional Glass Workspace
+      ↓
+Content / Ink
+```
+
+Controls and Floating surfaces are special-purpose material roles:
+
+```text
+Environment
+      ↓
+Glass Workspace
+      ├── Content
+      └── Control
+
+Floating surfaces
+      ↓
+Application context
+```
+
+The system should remain visually rich without requiring deep stacks of translucent surfaces.
+
+## 23.5 Theme Support
 
 Support:
 
@@ -1103,9 +1326,42 @@ Dark mode is the primary visual experience.
 
 Avoid pure black surfaces.
 
-Use layered surfaces and subtle contrast.
+Light theme should use restrained pearl/translucent surfaces rather than accumulating opaque white layers.
 
-## 23.2 Design Principles
+Both themes must preserve readable content against the actual rendered environment and glass surfaces.
+
+## 23.6 Accessibility
+
+Glass effects must never be allowed to reduce content readability.
+
+Requirements:
+
+- Text must remain readable against the actual rendered background.
+- Focus states must remain clearly visible.
+- Interactive controls must remain distinguishable from surrounding content.
+- Hover states must not be the only indication of interaction.
+- Keyboard navigation must remain usable.
+- Reduced-motion preferences should be respected if motion is introduced.
+- Decorative atmospheric elements must not interfere with interaction.
+
+Visual validation should consider the rendered result, not only the nominal CSS token values.
+
+## 23.7 Performance
+
+Backdrop blur is visually expensive.
+
+Therefore:
+
+- Prefer one Glass owner per logical workspace.
+- Avoid backdrop blur on repeated rows.
+- Avoid backdrop blur on ordinary controls.
+- Avoid unnecessary nested blur contexts.
+- Prefer transparent content within existing Glass Workspaces.
+- Keep decorative environment elements static unless motion provides a clear product benefit.
+
+This keeps rendering cost primarily related to the number of meaningful surfaces rather than the number of repeated content items.
+
+## 23.8 Design Principles
 
 Use:
 
@@ -1116,6 +1372,9 @@ Use:
 - Accessible contrast
 - Clear hover states
 - Minimal animation
+- Atmospheric depth
+- Translucent rather than opaque visual surfaces
+- Material consistency across pages
 
 Avoid:
 
@@ -1123,8 +1382,10 @@ Avoid:
 - Excessive decoration
 - Heavy animation
 - Unnecessary UI complexity
-
----
+- Glass applied mechanically to every component
+- White card-on-white-card stacking
+- Per-row backdrop blur
+- New visual material categories without architectural justification
 
 # 24. Applications Feature
 

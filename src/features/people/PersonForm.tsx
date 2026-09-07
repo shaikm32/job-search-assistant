@@ -8,6 +8,7 @@ import {
   type PersonType,
 } from '../../../shared/domain/person.js'
 import { Field } from '../../components/common/Field.js'
+import { SectionTitle } from '../../components/common/SectionTitle.js'
 
 export interface PersonFormValues {
   name: string
@@ -87,112 +88,128 @@ export function PersonForm({
   }
 
   return (
-    <form className="form" onSubmit={handleSubmit} noValidate>
-      <fieldset className="form-section">
-        <legend>Person details</legend>
-        <Field id="name" label="Name" error={errors.name}>
-          <input
-            id="name"
-            className="input"
-            type="text"
-            value={values.name}
-            disabled={busy}
-            onChange={(event) => set('name', event.target.value)}
-          />
-        </Field>
-        <Field id="connectionStatus" label="Connection status" error={errors.connectionStatus}>
-          <select
-            id="connectionStatus"
-            className="input"
-            value={values.connectionStatus}
-            disabled={busy}
-            onChange={(event) => set('connectionStatus', event.target.value as ConnectionStatus)}
-          >
-            {CONNECTION_STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field id="personType" label="Person type (optional)" error={errors.personType}>
-          <select
-            id="personType"
-            className="input"
-            value={values.personType ?? ''}
-            disabled={busy}
-            onChange={(event) =>
-              set('personType', event.target.value === '' ? null : (event.target.value as PersonType))
-            }
-          >
-            <option value="">Not specified</option>
-            {PERSON_TYPES.map((type) => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field id="company" label="Company (optional)" error={errors.company}>
-          <input
-            id="company"
-            className="input"
-            type="text"
-            value={values.company}
-            disabled={busy}
-            onChange={(event) => set('company', event.target.value)}
-          />
-        </Field>
-        <Field id="jobTitle" label="Job title (optional)" error={errors.jobTitle}>
-          <input
-            id="jobTitle"
-            className="input"
-            type="text"
-            value={values.jobTitle}
-            disabled={busy}
-            onChange={(event) => set('jobTitle', event.target.value)}
-          />
-        </Field>
-      </fieldset>
+    <form className="form form--wide" onSubmit={handleSubmit} noValidate>
+      <div className="form-grid">
+        <div className="form-column">
+          <fieldset className="form-section">
+            <legend>
+              <SectionTitle icon="user">Person Details</SectionTitle>
+            </legend>
+            <Field id="name" label="Name *" error={errors.name}>
+              <input
+                id="name"
+                className="input"
+                type="text"
+                placeholder="e.g. John Doe"
+                value={values.name}
+                disabled={busy}
+                onChange={(event) => set('name', event.target.value)}
+              />
+            </Field>
+            <Field id="company" label="Company" error={errors.company}>
+              <input
+                id="company"
+                className="input"
+                type="text"
+                placeholder="e.g. Google"
+                value={values.company}
+                disabled={busy}
+                onChange={(event) => set('company', event.target.value)}
+              />
+            </Field>
+            <Field id="jobTitle" label="Job Title" error={errors.jobTitle}>
+              <input
+                id="jobTitle"
+                className="input"
+                type="text"
+                placeholder="e.g. Senior Product Manager"
+                value={values.jobTitle}
+                disabled={busy}
+                onChange={(event) => set('jobTitle', event.target.value)}
+              />
+            </Field>
+            <Field id="personType" label="Person Type" error={errors.personType}>
+              <select
+                id="personType"
+                className="input"
+                value={values.personType ?? ''}
+                disabled={busy}
+                onChange={(event) =>
+                  set('personType', event.target.value === '' ? null : (event.target.value as PersonType))
+                }
+              >
+                <option value="">Select type (optional)</option>
+                {PERSON_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </fieldset>
+        </div>
 
-      <fieldset className="form-section">
-        <legend>Outreach (optional)</legend>
-        <Field id="linkedinUrl" label="LinkedIn URL" error={errors.linkedinUrl}>
-          <input
-            id="linkedinUrl"
-            className="input"
-            type="url"
-            placeholder="https://…"
-            value={values.linkedinUrl}
-            disabled={busy}
-            onChange={(event) => set('linkedinUrl', event.target.value)}
-          />
-        </Field>
-        <Field id="requestSentDate" label="Connection request date" error={errors.requestSentDate}>
-          <input
-            id="requestSentDate"
-            className="input"
-            type="date"
-            value={values.requestSentDate}
-            disabled={busy}
-            onChange={(event) => set('requestSentDate', event.target.value)}
-          />
-        </Field>
-      </fieldset>
+        <div className="form-column">
+          <fieldset className="form-section">
+            <legend>
+              <SectionTitle icon="link">Connection & Outreach</SectionTitle>
+            </legend>
+            <Field id="connectionStatus" label="Connection Status *" error={errors.connectionStatus}>
+              <select
+                id="connectionStatus"
+                className="input"
+                value={values.connectionStatus}
+                disabled={busy}
+                onChange={(event) => set('connectionStatus', event.target.value as ConnectionStatus)}
+              >
+                {CONNECTION_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field id="linkedinUrl" label="LinkedIn URL" error={errors.linkedinUrl}>
+              <input
+                id="linkedinUrl"
+                className="input"
+                type="url"
+                placeholder="https://www.linkedin.com/in/…"
+                value={values.linkedinUrl}
+                disabled={busy}
+                onChange={(event) => set('linkedinUrl', event.target.value)}
+              />
+            </Field>
+            <Field id="requestSentDate" label="Connection Request Date" error={errors.requestSentDate}>
+              <input
+                id="requestSentDate"
+                className="input"
+                type="date"
+                value={values.requestSentDate}
+                disabled={busy}
+                onChange={(event) => set('requestSentDate', event.target.value)}
+              />
+            </Field>
+          </fieldset>
 
-      <fieldset className="form-section">
-        <legend>Notes (optional)</legend>
-        <Field id="notes" label="Notes" error={errors.notes}>
-          <textarea
-            id="notes"
-            className="input"
-            rows={4}
-            value={values.notes}
-            disabled={busy}
-            onChange={(event) => set('notes', event.target.value)}
-          />
-        </Field>
-      </fieldset>
+          <fieldset className="form-section">
+            <legend>
+              <SectionTitle icon="note">Notes (Optional)</SectionTitle>
+            </legend>
+            <Field id="notes" label="Notes" error={errors.notes}>
+              <textarea
+                id="notes"
+                className="input"
+                rows={4}
+                placeholder="Add any notes about this person…"
+                value={values.notes}
+                disabled={busy}
+                onChange={(event) => set('notes', event.target.value)}
+              />
+            </Field>
+          </fieldset>
+        </div>
+      </div>
 
       {serverError ? (
         <p className="banner banner--error" role="alert">

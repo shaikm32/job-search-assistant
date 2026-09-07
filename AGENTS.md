@@ -86,3 +86,30 @@ Do not prematurely implement future modules, integrations, infrastructure, or sp
 Keep the application a local-first modular monolith unless the Product & Architecture Specification is explicitly changed.
 
 Avoid premature complexity, but preserve clean module boundaries that allow future evolution.
+
+---
+
+## Visual Material Architecture
+
+The UI follows the material architecture defined in `docs/PRODUCT_ARCHITECTURE_SPEC.md`:
+
+- Environment
+- Glass Workspace
+- Content / Ink
+- Control
+- Floating
+
+Follow the principle:
+
+> **Structural hierarchy ≠ material hierarchy.**
+
+Do not introduce new visual surface/material patterns without architectural justification.
+
+In particular:
+
+- Content is transparent by default.
+- Do not stack Glass inside Glass merely because components are nested.
+- Keep backdrop blur limited to intentional Glass/Floating surfaces.
+- Do not apply per-row or per-control backdrop blur.
+- Prefer typography, spacing, separators, borders, and accent ink over additional visual layers.
+- Preserve accessibility, readability, responsive behavior, and performance when modifying visual surfaces.
