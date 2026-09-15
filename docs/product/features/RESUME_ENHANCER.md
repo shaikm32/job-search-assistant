@@ -1,259 +1,216 @@
-# Resume Enhancer — M9
+# Resume Enhancer
 
-> **Source status:** This feature is a later product decision agreed after the original MVP Product & Architecture Specification. It is included here because it is now part of the approved product direction.
+**Status:** Locked product specification
+**Milestone:** M9
+**Last updated:** 2026-09-16
 
-## Purpose
+## 1. Purpose
 
-Allow a user to take whichever resume they want to enhance, provide a specific job description, understand how well the resume matches that job, selectively approve AI-proposed improvements, generate a final tailored resume, and optionally generate a tailored cover letter.
+A standalone workflow for tailoring an existing resume to a specific job description.
 
-## Entry point
+The user supplies a PDF/DOCX resume and pasted JD. The system analyzes the match, shows strengths and gaps, proposes selectable improvements, applies selected changes, re-evaluates the result, and provides resume/cover-letter artifacts.
 
-Resume Enhancer is a standalone product workflow.
+## 2. Starting State
 
-It is **not launched from an existing Application**. The user enhances the resume first; afterwards they may create an Application and attach the resulting resume and cover letter.
+There is no master resume.
 
-## Input
+With no active/recent session, show:
+
+- Resume upload
+- Job Description input
+- Enhance Resume
+
+If a valid Recent Enhancement exists within retention, show it so the user can revisit available outputs.
+
+## 3. Inputs
 
 ### Resume
-
-Supported formats:
-- PDF
-- DOCX
-
-There is no Master Resume concept.
-
-The user uploads whichever resume they want to enhance.
+Only PDF and DOCX are supported. DOC is rejected. The original file is never modified.
 
 ### Job Description
+The user pastes the JD into a large text area. URL extraction/scraping is out of scope for M9.
 
-For now, the user copies the JD from its source and pastes it into a large text box.
+## 4. Phase 1 — Analyze and Suggest
 
-URL-based JD extraction is not part of M9.
+On Enhance Resume:
 
-## Analysis
+1. validate inputs
+2. lock the workflow
+3. show the animated progress experience
+4. analyze resume against JD
+5. identify What's Good
+6. identify What's Missing
+7. generate selectable enhancement suggestions
+8. show the suggestion selection screen
 
-Workflow:
+The operation may take up to 5 minutes.
 
-```text
-Upload Resume
-    ↓
-Paste Job Description
-    ↓
-Analyze Resume
-    ↓
-Display Results
-```
+## 5. Progress Experience
 
-While analysis is running:
-- the workflow is locked
-- the user cannot interact with the workflow
-- meaningful AI progress should be shown
-- the progress experience should be visually polished and atmospheric
+The progress screen shows the actions AI is performing.
 
-## Analysis results
+Each action is pending, active, or completed.
 
-The primary results are:
+The active action has an eye-pleasing animation. Completion changes it to an animated check mark which then persists.
 
-### ATS Score
+The UI does not use fabricated percentage progress.
 
-An AI-estimated score from 0–100 representing how well the resume is optimized for automated screening against the supplied JD.
+During processing the user cannot modify the workflow.
 
-It is not the employer's actual ATS score and must not be presented as a universal ATS score.
+## 6. Analysis Result
 
-Evaluate:
-- JD keyword alignment
-- requirement coverage
-- experience alignment
-- title and terminology alignment
-- ATS readability
+Display:
 
-Keyword count alone must not determine the score.
+### AI-estimated ATS Score
+One overall score, 0–100.
+
+Clearly state:
+
+> **AI-estimated ATS Score — this is not the employer's actual ATS score.**
+
+Do not imply that the score guarantees shortlisting.
 
 ### Fit Match
-
-A qualitative measure of demonstrated candidate-role alignment:
-- Strong Match
-- Medium Match
-- Weak Match
-
-ATS Score and Fit Match are intentionally separate.
+- Strong
+- Medium
+- Weak
 
 ### What's Good
-
-Show strengths of the resume specifically relative to the JD.
+Meaningful JD-relative strengths.
 
 ### What's Missing
+Meaningful JD-relative gaps or underrepresented requirements.
 
-Show JD-specific requirements or expectations that the current resume does not adequately demonstrate.
+If there are no meaningful gaps:
 
-"Missing" does not necessarily mean the candidate lacks the capability; it means the current resume does not adequately demonstrate it.
+> **Your resume is already a strong match for this job description.**
 
-If no meaningful suggestions/gaps are found, show a positive message indicating that the resume is already a strong match.
+Do not manufacture gaps.
 
-## Enhancement
+## 7. Enhancement Suggestions
 
-The user chooses to enhance the resume.
+Each suggestion explains:
 
-Target completion time:
-**≤60 seconds**
+- what will change
+- where it will change
+- why it is relevant to the JD
 
-While enhancement is running:
-- workflow is locked
-- user cannot modify inputs
-- user cannot trigger another enhancement
+Users select suggestions with checkboxes.
 
-### Enhancement progress
-
-Show a list of meaningful AI actions.
-
-The current action has an animated in-progress indicator.
-
-Completed actions transition to animated check marks and remain visibly completed.
+The AI may identify an opportunity not represented in the resume, but it must not assert unsupported candidate experience as fact.
 
 Example:
 
-```text
-✓ Analyze job requirements
-✓ Analyze resume structure
-✓ Identify alignment opportunities
-● Optimize relevant resume content
-○ Improve ATS compatibility
-○ Prepare enhancement suggestions
-○ Validate proposed changes
-```
+> **Add Kubernetes to the skills section**
+> The job description calls for Kubernetes. Add it only if it accurately represents your experience.
 
-## Suggested improvements
+## 8. No Clarification Loop
 
-After enhancement analysis, show proposed improvements that could materially improve the resume's match to the JD.
-
-The user selects suggestions using checkboxes.
-
-The model is:
+No open-ended AI interrogation.
 
 ```text
-AI proposes
-    ↓
-User approves/rejects
-    ↓
-AI incorporates selected improvements
+identify opportunity
+→ propose suggestion
+→ user selects
+→ apply selected suggestion
 ```
 
-Do not create an endless clarification/question loop.
+## 9. Final Enhancement
 
-## AI integrity
+After selection:
 
-The AI must never fabricate:
-- employment history
-- job titles
-- responsibilities
-- achievements
-- skills
-- certifications
-- education
-- metrics
-- companies
-- projects
-- technologies
-- experience
+1. lock workflow
+2. show progress
+3. apply only selected suggestions
+4. produce enhanced canonical resume
+5. produce meaningful change summary
+6. re-analyze against same JD
+7. calculate updated ATS Score + Fit Match
+8. show final resume
 
-Enhancement may improve wording, structure, clarity, achievement framing, ATS compatibility, keyword placement, and other meaningful aspects of the resume, but must remain truthful.
+## 10. Change Summary
 
-## Final enhancement
+Show meaningful changes in human-readable form.
 
-After the user submits selected suggestions:
-1. incorporate selected items in the appropriate resume sections
-2. apply relevant improvements
-3. generate the final enhanced resume
-4. display the final resume preview
-5. display updated ATS Score
-6. display updated Fit Match
+Examples:
 
-The final resume must be previewed before download.
+- Professional Summary rewritten to emphasize relevant product leadership.
+- Two experience bullets reworked to emphasize analytics.
+- Skills section updated.
 
-## Downloads
+Avoid forcing the user through a character-level document diff.
 
-Supported:
-- DOCX
-- PDF
+## 11. Final Resume
 
-Use a professional, clean, structured, ATS-friendly template.
+The application renders a clean, structured, ATS-friendly template.
 
-## Persistence
+Source formatting is not guaranteed to be preserved.
 
-Before the final enhanced resume exists, the enhancement session is ephemeral.
+The internal canonical resume structure is rendered into HTML preview and downloadable DOCX/PDF.
 
-If the user closes the session while:
-- analysis is running
-- enhancement is running
-- suggestions are being selected
+## 12. Cover Letter
 
-discard the incomplete enhancement.
+Generated from the final enhanced resume and JD.
 
-After the final enhanced resume is successfully generated, it becomes a Recent Enhancement.
+It must:
 
-Recent Enhancement retention:
-- maximum 3 recent incomplete enhancements
-- retention period 3 days
+- be tailored to the role
+- use only available resume/JD information
+- avoid fabricated candidate claims
+- be shown read-only in M9
+- be downloadable as DOCX/PDF
 
-This is not permanent enhancement history.
+## 13. Application Creation
 
-If no active recent enhancement exists, show the clean starting workflow.
+Create Application carries only:
 
-If a recent enhancement exists within the retention period, allow the user to revisit it and download the available output.
+- final resume
+- cover letter
 
-## Cover Letter
+No JD-derived company/title/location fields are automatically populated by this carry-over.
 
-Generate the cover letter from:
+## 14. Recent Enhancement
 
-**Final Enhanced Resume + Job Description**
+M9 does not maintain permanent enhancement history.
 
-The cover letter should be:
-- tailored to the role
-- professional
-- concise
-- relevant
-- non-repetitive with the resume
-- grounded in candidate information
+Completed enhancement sessions are retained only to allow the user to return and download available artifacts.
 
-Cover letters are read-only in the application.
+Rules:
 
-Workflow:
+- maximum 3 recent sessions
+- retention 3 days
+- automatic cleanup
+- no permanent enhancement history
 
-```text
-Generate
-    ↓
-Review
-    ↓
-Download
-```
+## 15. Abandonment
 
-Supported:
-- DOCX
-- PDF
+If the user abandons the workflow before final enhancement completion, including during analysis, suggestion generation, or suggestion selection, the incomplete session is discarded.
 
-## Create Application
+## 16. Privacy
 
-After preparing the artifacts, the user may create an Application.
+Before AI processing, clearly state:
 
-M9 carries only:
-- final enhanced resume
-- final cover letter
+> **Your resume and job description will be sent over the internet to the AI provider you selected so the AI can analyze or enhance them. How your data is handled by that provider is governed by that provider's privacy policy and terms.**
 
-as Application attachments.
+## 17. AI Provider Settings
 
-Creating the Application remains an explicit user action.
+Settings provides:
 
-## Out of scope
+- AI Provider dropdown
+- API Key field
+- Save/Update
 
-- Master Resume
-- Permanent enhancement history
-- Resume Library
-- Job URL extraction
-- People URL extraction
-- Browser extension
-- Cover-letter editor
-- Rich-text editor
-- Endless AI clarification
-- Automatic application creation
-- Category-level ATS score breakdown
-- Generic resume weakness report
+API keys are securely stored on the user's PC. The browser never calls the provider directly.
+
+M9 does not expose model/reasoning selection, but the architecture supports adding it later.
+
+## 18. Out of Scope
+
+- master resume management
+- URL-based JD extraction/scraping
+- permanent enhancement history
+- model/reasoning selection UI
+- DOC input
+- unsupported OCR scenarios unless separately approved
+- automatic Application field population from JD
+- clarification loops
