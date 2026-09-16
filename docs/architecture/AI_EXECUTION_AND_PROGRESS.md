@@ -29,6 +29,10 @@ No queue, message broker, WebSocket, or SSE is required for M9.
 
 Polling fits the existing local HTTP architecture, is simple to debug, requires no persistent connection, and is sufficient for operations lasting up to five minutes.
 
+No message broker, external job queue, Kubernetes, distributed worker, or background infrastructure beyond the local backend process is introduced.
+
+The backend owns workflow state; the frontend polls for state and progress.
+
 ## 3. Operation State
 
 ```text
@@ -44,6 +48,12 @@ cancel_requested → cancelled
 ```
 
 Do not expose a cancel control unless the implementation can safely handle cancellation.
+
+An operation must never remain indefinitely in an in-progress state.
+
+Only one AI operation may run for a given enhancement session at a time. A second request for the same session must not start concurrently.
+
+The backend owns the timeout and must safely handle normal completion, provider errors, timeout, malformed provider response, unavailable provider, missing configuration, and cancellation where supported.
 
 ## 4. Progress Steps
 

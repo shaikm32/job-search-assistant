@@ -11,6 +11,12 @@ export interface AppPaths {
   databaseDir: string
   databaseFile: string
   documentsDir: string
+  /**
+   * Application-managed storage for Resume Enhancer artifacts. Kept separate
+   * from `documentsDir` because enhancement sessions are not Application
+   * attachments and follow their own ephemeral lifecycle.
+   */
+  enhancementsDir: string
 }
 
 export function resolveAppDataDir(): string {
@@ -46,11 +52,13 @@ export function resolveAppPaths(): AppPaths {
     databaseDir,
     databaseFile: join(databaseDir, 'job-search-assistant.db'),
     documentsDir: join(appDataDir, 'documents', 'applications'),
+    enhancementsDir: join(appDataDir, 'documents', 'enhancements'),
   }
 }
 
 export function ensureAppDirectories(paths: AppPaths = resolveAppPaths()): AppPaths {
   mkdirSync(paths.databaseDir, { recursive: true })
   mkdirSync(paths.documentsDir, { recursive: true })
+  mkdirSync(paths.enhancementsDir, { recursive: true })
   return paths
 }

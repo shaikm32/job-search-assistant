@@ -55,8 +55,18 @@ Generated from final enhanced resume + JD, grounded in available information, no
 ### PD-M9-017 — AI Provider
 Settings lets the user select an AI provider and provide its API key.
 
+The initial supported provider is **OpenAI**.
+
+The product is provider-agnostic: additional providers are added through new provider adapters without changing Resume Enhancer behaviour.
+
+Only implemented providers appear in the provider list. Placeholder providers are not shown.
+
+The API key is supplied and owned by the user.
+
 ### PD-M9-018 — Model Selection Deferred
 No model or reasoning-level controls in M9. Architecture remains model-aware.
+
+The application selects the model internally based on the AI operation. Users do not see or choose a model.
 
 ### PD-M9-019 — Backend-Only AI
 All AI calls originate from the local backend.
@@ -66,6 +76,18 @@ Provider API keys are securely stored on the user's PC and never exposed to fron
 
 ### PD-M9-021 — Cloud Privacy Disclosure
 The product clearly states that resume/JD data is transmitted over the internet to the selected provider and that provider privacy policy/terms govern handling.
+
+The disclosure must communicate that:
+
+- the application is local-first, but AI processing sends the relevant data to the configured external provider;
+- resume/JD content may therefore be transmitted over the internet;
+- the privacy, retention, security, and handling of that data are subject to the provider's policies and terms;
+- the application does not control the provider's data-handling practices;
+- users should review the provider's privacy/data-use policies before using AI features.
+
+The disclosure must be prominent enough that a user cannot reasonably assume AI processing is entirely local.
+
+The product must not imply that it guarantees provider-side privacy.
 
 ### PD-M9-022 — ATS Disclaimer
 ATS Score is an AI-estimated assessment, not the employer's actual ATS score.
@@ -83,4 +105,41 @@ Raw prompts, full AI responses, and enhancement histories are not permanent prod
 The enhancement may improve overall resume quality, but displayed analysis/gaps remain tied to the JD.
 
 ### PD-M9-027 — Final Output Template
+### PD-M9-028 — Settings Entry Point
+Settings is reachable from the application navigation.
+
+Settings provides the AI provider dropdown, the API key input, Save/Update, and Clear, and shows whether AI is configured.
+
+The user supplies and owns the API key.
+
+### PD-M9-029 — Secure Credential Handling
+The API key is stored using the operating system's secure credential storage.
+
+The product does not fall back to plaintext credential storage.
+
+If secure credential storage is unavailable, the product reports that clearly instead of storing the key insecurely.
+
+The API key is never returned by an API response, is never stored in browser storage, is never placed in a URL, and is never shown in the interface after it is saved.
+
+### PD-M9-030 — Configuration Validation
+Configuration is validated structurally: the product confirms that a provider is selected and a credential is stored.
+
+The product does not perform a live AI request to validate the Settings screen, and there is no "test connection" action.
+
+### PD-M9-031 — Token Usage Source
+M9 provides no token accounting, token dashboard, billing information, or provider usage analytics.
+
+Users review usage and billing through the configured provider's own dashboard.
+
+### PD-M9-032 — AI Workflow Upper Bound
+A single AI workflow may run for at most 5 minutes.
+
+This is an upper bound, not the expected response time.
+
+A workflow must never remain indefinitely in progress; timeouts and failures lead to a clear state with a retry action.
+
+### PD-M9-033 — One AI Operation Per Session
+Only one AI operation may run for a given enhancement session at a time.
+
+A second request for the same session must not start concurrently, and the workflow stays locked while processing.
 The application renders the final resume and cover letter in its own clean, structured, ATS-friendly template rather than preserving arbitrary source formatting.

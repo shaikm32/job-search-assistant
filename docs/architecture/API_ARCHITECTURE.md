@@ -43,7 +43,39 @@ Dashboard:
 GET    /api/dashboard/summary
 ```
 
-The exact endpoint structure may evolve.
+Enhancements (M9 Resume Enhancer — currently implemented):
+
+```text
+POST   /api/enhancements
+GET    /api/enhancements/:id
+DELETE /api/enhancements/:id
+POST   /api/enhancements/:id/resume
+PUT    /api/enhancements/:id/job-description
+```
+
+AI configuration (M9 Settings — currently implemented in the M9-B slice):
+
+```text
+GET    /api/ai/settings
+PUT    /api/ai/settings
+DELETE /api/ai/settings
+```
+
+The AI configuration endpoints return and accept safe configuration state only. The API key may be submitted to save a credential, but it is never returned. Credentials are stored using OS-native secure credential storage and are never written to SQLite or to ordinary application files.
+
+Enhancement sessions are not tied to an Application: the user enhances a resume first and may create an Application afterwards. Resume input accepts PDF and DOCX only; DOC is rejected.
+
+The following Resume Enhancer API groups are future M9 work and are not yet implemented:
+
+```text
+Analysis / operation status
+Enhancement
+Re-analysis
+Cover letter
+Artifact download
+```
+
+Future endpoint structure for those operations is not locked here until the corresponding implementation slice defines it.
 
 ## Restrictions
 

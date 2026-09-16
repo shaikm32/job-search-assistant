@@ -2,6 +2,7 @@ import { ensureAppDirectories } from './config/paths.js'
 import { openDatabase, registerShutdownHandlers } from './database/connection.js'
 import { runMigrations } from './database/migrate.js'
 import { createHttpServer } from './http/create-http-server.js'
+import { pruneRecentEnhancements } from './modules/enhancements/enhancement.service.js'
 
 const host = '127.0.0.1'
 const port = Number.parseInt(process.env.PORT ?? '3001', 10)
@@ -14,6 +15,14 @@ const paths = ensureAppDirectories()
 const database = openDatabase(paths)
 runMigrations(database)
 registerShutdownHandlers()
+
+// Retention cleanup is best-effort: a cleanup failure must never prevent the
+// application from starting.
+try {
+  pruneRecentEnhancements()
+} catch (error) {
+  console.error('Failed to clean up expired enhancement sessions:', error)
+}
 
 const server = createHttpServer()
 

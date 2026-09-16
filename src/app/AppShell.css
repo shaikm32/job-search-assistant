@@ -214,8 +214,17 @@
     min-width: 0;
   }
 
+  /* Adding a fourth primary destination means the labels no longer fit the
+     available pill width at this breakpoint. Labels keep their natural width
+     (flex-shrink: 0) and the row scrolls horizontally instead of squeezing or
+     overlapping them. The row stays a single compact line, as intended. */
+  .shell-nav {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
   .nav-link {
-    flex: 1;
+    flex: 1 0 auto;
     min-width: 0;
     text-align: center;
     padding: 6px 4px;

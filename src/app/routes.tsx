@@ -8,6 +8,9 @@ import { AddPersonPage } from '../features/people/AddPersonPage.js'
 import { EditPersonPage } from '../features/people/EditPersonPage.js'
 import { PeoplePage } from '../features/people/PeoplePage.js'
 import { PersonDetailPage } from '../features/people/PersonDetailPage.js'
+import { EnhancementSessionPage } from '../features/resume-enhancer/EnhancementSessionPage.js'
+import { ResumeEnhancerPage } from '../features/resume-enhancer/ResumeEnhancerPage.js'
+import { SettingsPage } from '../features/settings/SettingsPage.js'
 import { AppShell } from './AppShell.js'
 import { PlaceholderPage } from './PlaceholderPage.js'
 
@@ -28,6 +31,9 @@ export const router = createBrowserRouter([
       { path: 'people/new', element: <AddPersonPage /> },
       { path: 'people/:id', element: <PersonDetailPage /> },
       { path: 'people/:id/edit', element: <EditPersonPage /> },
+      { path: 'resume-enhancer', element: <ResumeEnhancerPage /> },
+      { path: 'resume-enhancer/:sessionId', element: <EnhancementSessionPage /> },
+      { path: 'settings', element: <SettingsPage /> },
       {
         path: '*',
         element: (

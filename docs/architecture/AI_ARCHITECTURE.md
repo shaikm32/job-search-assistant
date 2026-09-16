@@ -5,16 +5,35 @@
 
 ## 1. Purpose
 
-Defines provider abstraction, credential handling, model selection, structured outputs, privacy, validation, failure handling, and future extensibility for AI capabilities.
+Defines provider abstraction, credential handling, model selection, structured outputs, privacy, validation, failure handling, execution limits, and future extensibility for AI capabilities.
 
 ## 2. Core Decisions
 
+### Provider architecture
+
 - All AI calls happen through the local backend. The React frontend never calls an AI provider directly.
-- Provider-specific SDKs, endpoints, authentication, model names, and response formats remain behind provider adapters.
+- AI features depend on the provider-agnostic abstraction, never on a vendor SDK or vendor HTTP API.
+- Provider-specific SDKs, endpoints, authentication, model names, request formats, and response formats remain behind provider adapters.
+- The first supported provider is **OpenAI**. It is the first adapter, not the architectural dependency of the application.
+- Additional providers must be addable by adding adapters. Feature and business logic must not be refactored to support them.
+- Only implemented providers are registered. Placeholder providers are not defined.
+- The provider registry is the only place that maps a configured provider to an adapter.
+
+### Contracts
+
 - The product owns canonical AI domain contracts; provider responses are translated and validated before use.
+- Structured output is a first-class internal concept: every AI operation defines the canonical structure it returns, independent of any provider response schema.
+
+### Configuration
+
 - Users select an AI provider and provide an API key in Settings.
-- M9 does not expose model or reasoning-level selection. The abstraction remains model-aware so these can be added later without feature refactoring.
-- Model choice is an internal implementation decision based on structured-output reliability, instruction following, resume/JD comprehension, consistency, context window, latency, cost, provider availability, and required capabilities.
+- M9 exposes only provider and API key.
+- The internal abstraction can represent provider, credential, model, reasoning configuration, AI operation, and structured output, so model and reasoning configuration can be exposed later without refactoring the provider architecture.
+- M9 does not expose model or reasoning-level selection.
+- Model choice is an internal implementation decision resolved by the AI service through the provider adapter.
+
+### Content integrity
+
 - Absence of information from a resume is not proof that the candidate lacks that experience.
 - The AI must not fabricate employers, titles, dates, responsibilities, achievements, metrics, certifications, technologies, qualifications, education, projects, or other candidate facts.
 - The user remains the final authority over proposed resume changes.
@@ -23,26 +42,50 @@ Defines provider abstraction, credential handling, model selection, structured o
 ## 3. Provider Architecture
 
 ```text
-Resume Enhancer
+Feature (Resume Enhancer)
       ↓
-    AI Service
+   AI Service
       ↓
 Provider Registry
-      ├── Provider Adapter A
-      ├── Provider Adapter B
-      └── Provider Adapter C
+      ↓
+Provider Adapter
+      ↓
+External AI Provider
 ```
 
-A provider adapter exposes the canonical internal interface and hides vendor-specific behavior.
+### Responsibilities
 
-The internal configuration is capable of representing:
+- **Feature** — requests an AI operation and consumes canonical results. Contains no provider-specific logic.
+- **AI Service** — owns the AI workflow: resolves configuration and credential, resolves the provider adapter, resolves the model for the operation, invokes the adapter, validates the response, and returns canonical contracts.
+- **Provider Registry** — maps a configured provider identifier to a registered adapter. Providers that are not registered are not selectable.
+- **Provider Adapter** — hides all vendor behavior: authentication, endpoints, model names, request construction, response parsing, and provider error translation.
+- **External AI Provider** — reached only by an adapter, only from the local backend.
+
+### Initial provider
+
+The first supported provider is OpenAI.
+
+Only OpenAI is implemented initially.
+
+OpenAI must not become the architectural dependency of the application:
+
+- no vendor SDK, endpoint, model name, or response shape may appear in feature or business logic;
+- adding a provider must be possible by adding an adapter and registering it;
+- provider-specific behavior stays inside the adapter.
+
+Adding a provider must not require refactoring the frontend, the AI service, the Resume Enhancer module, or the canonical contracts.
+
+### Internal configuration concepts
+
+The internal abstraction is capable of representing:
 
 ```text
 provider
 credential
-operation
 model
 reasoning configuration
+AI operation
+structured output
 ```
 
 M9 exposes only provider + API key.
@@ -53,17 +96,58 @@ The system must not assume that one API key is permanently bound to one model. M
 
 API keys are user secrets.
 
-Requirements:
+### Storage mechanism
 
-- Store locally and securely on the user's PC.
-- Never store in Git.
-- Never store in browser localStorage.
-- Never expose through API responses.
-- Never log or include in analytics/telemetry.
+AI credentials are stored using the **OS-native secure credential mechanism**:
+
+| Platform | Mechanism |
+|---|---|
+| Windows | Windows Credential Manager / OS-protected credential storage |
+| macOS | Keychain |
+| Linux | Secret Service / libsecret-compatible secure credential storage |
+
+Application-level encryption is **not** the primary mechanism.
+
+A plaintext fallback is **prohibited**. If the OS secure credential mechanism is unavailable, the application must return a safe configuration error stating that secure credential storage is unavailable, and must not store the credential.
+
+### Credential-store abstraction
+
+Credential storage is reached through a small credential-store abstraction so the AI layer never depends on platform-specific implementation details directly.
+
+The concrete mechanism must be replaceable without changing the AI service, the provider adapters, or feature code.
+
+The abstraction exposes only:
+
+- read the credential for the configured provider
+- write/replace the credential
+- clear the credential
+- report whether secure credential storage is available
+
+### Rules
+
+- Never store in Git or source code.
+- Never write to SQLite.
+- Never write to ordinary application files.
+- Never store in browser localStorage or sessionStorage.
+- Never appear in URLs.
+- Never be returned by an API response.
+- Never be logged, and never included in frontend telemetry or analytics.
+- Never be exposed to frontend JavaScript after submission, except transiently while the user is entering it.
 - Backend reads the credential only when making provider requests.
-- Use an OS-appropriate secure credential mechanism where available; any fallback must use restrictive local permissions and be documented.
 
-Settings may return safe metadata such as configured provider, never plaintext credentials.
+Settings may return safe metadata such as the configured provider and configured/not-configured state, never plaintext credentials.
+
+### Platform behaviour and dependency implications
+
+- The mechanism differs per platform, so credential storage must be implemented behind the abstraction and must degrade explicitly rather than silently.
+- The implemented bridge uses no native npm dependency and no application-level encryption:
+  - Windows — PowerShell with P/Invoke into the Win32 Credential API (`advapi32`), writing a generic credential;
+  - macOS — the system `security` tool against the Keychain;
+  - Linux — `secret-tool`, the libsecret command-line client, against the Secret Service.
+- The secret is passed to the bridge on standard input rather than as a process argument, so it cannot appear in a process listing.
+- Where the OS mechanism is unavailable (for example a Linux desktop or server environment without a running Secret Service), AI features must report secure credential storage as unavailable rather than falling back to insecure storage.
+- Credential storage availability is independent of database and document storage, which continue to work normally.
+- A failed or unavailable credential store must never break application startup.
 
 ## 5. Privacy Disclosure
 
@@ -71,7 +155,19 @@ M9 uses cloud AI providers. Before AI processing, clearly disclose:
 
 > **Your resume and job description will be sent over the internet to the AI provider you selected so the AI can analyze or enhance them. How your data is handled by that provider is governed by that provider's privacy policy and terms.**
 
-The disclosure must be prominent and must not imply that cloud-processed data remains entirely local.
+The disclosure must communicate that:
+
+- the application is local-first, but AI processing requires sending the relevant data to the configured external AI provider;
+- resume and job description content may therefore be transmitted over the internet;
+- the privacy, retention, security, and handling of that data are subject to the configured provider's policies and terms;
+- the application does not control the provider's data-handling practices;
+- users should review the provider's privacy and data-use policies before using AI features.
+
+The disclosure must be prominent enough that a user cannot reasonably assume AI processing is entirely local.
+
+Do not imply that the application guarantees provider-side privacy.
+
+Do not make unsupported claims regarding a provider's data retention, privacy, training, or security practices.
 
 ## 6. AI Operations
 
@@ -236,7 +332,15 @@ A JD requirement absent from the resume may be surfaced as an opportunity. It mu
 
 ## 12. Execution Limit
 
-Each AI operation has a hard maximum of **5 minutes**. The progress architecture defines how the UI observes long-running work.
+Each AI workflow has a hard maximum of **5 minutes**.
+
+This is the upper bound, not the expected response time.
+
+The backend owns the timeout and must safely handle normal completion, provider errors, timeout, malformed provider response, unavailable provider, missing configuration, and cancellation where supported.
+
+An AI workflow must never remain indefinitely in an in-progress state.
+
+The progress and execution architecture defines how the UI observes long-running work.
 
 ## 13. Errors and Observability
 
@@ -244,4 +348,138 @@ The backend owns timeouts, provider errors, safe retries where appropriate, vali
 
 Do not expose API keys, raw provider exceptions, internal stack traces, or sensitive prompts.
 
+## 14. AI Call Boundary
+
+All AI calls happen through the backend. Frontend code must never call OpenAI or any other AI provider directly.
+
+The backend is responsible for the complete call sequence:
+
+1. retrieve the credential from the secure credential store
+2. resolve the configured provider
+3. resolve the model internally
+4. construct the provider-specific request
+5. perform the AI call
+6. validate the provider response
+7. convert it into the application's provider-agnostic structured contract
+8. return only the required safe result to the frontend
+
+Feature modules must not contain provider-specific API logic.
+
+The frontend receives canonical results and safe configuration state only. It never receives the credential, provider request payloads, raw provider responses, authorization headers, or internal storage details.
+
+## 15. Model Selection
+
+Users do not select models in M9.
+
+The application chooses the model based on the AI operation.
+
+Model choice should be driven by factors such as:
+
+- structured-output reliability
+- reasoning quality
+- instruction following
+- context capacity
+- latency
+- cost
+- suitability for resume/JD analysis and transformation
+
+Model selection must not be hard-coded into feature components.
+
+Model resolution stays behind the provider adapter / AI service boundary so the model can later become configurable without refactoring the provider architecture.
+
+Model availability is provider/account-specific and is resolved by the adapter. The system must not assume one API key is permanently bound to one model.
+
+## 16. Reasoning Configuration
+
+Users do not configure reasoning effort in M9.
+
+The generic AI abstraction must be capable of carrying provider/model-specific reasoning configuration.
+
+Reasoning configuration is therefore represented as an internal capability/configuration of the AI request, not as OpenAI-specific parameters embedded in feature code.
+
+Rules:
+
+- Do not assume every provider supports the same reasoning controls.
+- Provider adapters are responsible for translating generic reasoning intent into provider-specific parameters where supported.
+- An adapter that does not support reasoning must ignore the intent rather than fail the operation.
+- Reasoning configuration must be expressible per operation, because different operations may warrant different effort.
+- No reasoning control is exposed in the M9 UI.
+
+## 17. Provider Configuration and Settings
+
+Settings lets the user select the AI provider and enter an API key.
+
+Operations:
+
+- AI Provider dropdown
+- API key input
+- Save / Update
+- Clear
+
+For M9-B, the provider list contains only OpenAI.
+
+### Configuration validation
+
+Configuration validation determines whether the configuration is **structurally usable**:
+
+- a provider is selected and is registered
+- a credential is present in the secure credential store for that provider
+
+Validation must not perform a live AI request merely to validate the Settings screen. There is no "test connection" requirement.
+
+Validation must never return the credential, and must never include it in an error message.
+
+### Safe configuration state
+
+The frontend receives only safe state:
+
+- selected provider
+- configured / not configured
+- safe provider metadata (such as display name and whether credentials can be stored)
+
+The frontend must never receive the API key.
+
+The API key exists in the browser only transiently while the user is entering it.
+
+### Restart persistence
+
+Configuration survives application restarts.
+
+Changing or clearing the provider or API key must affect subsequent AI operations.
+
+## 18. Provider Failures and Safe Errors
+
+Provider-specific errors must not leak:
+
+- API keys
+- authorization headers
+- raw request bodies
+- sensitive provider response content
+- internal filesystem paths
+- internal implementation details
+
+Provider failures are translated into safe application-level errors.
+
+Distinguishable failure categories:
+
+- AI not configured
+- secure credential storage unavailable
+- provider unavailable
+- provider request failed
+- provider timeout
+- invalid/malformed AI response
+
+Never return raw provider SDK errors containing credentials or sensitive request information.
+
+Missing configuration must produce a safe, actionable application-level error.
+
+## 19. Usage Information
+
+M9 does not implement token accounting, token dashboards, billing information, or provider usage analytics.
+
+The application does not reproduce provider billing or usage information.
+
+Users inspect usage through the configured provider's own dashboard.
+
+Token-usage tracking must not become a prerequisite for M9 AI functionality.
 Operational metadata may include operation, provider, model identifier, timestamps, duration, success/failure, failure category, and session/operation ID. Do not permanently store raw prompts or full AI responses unless separately approved.

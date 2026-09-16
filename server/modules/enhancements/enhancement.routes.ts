@@ -1,0 +1,59 @@
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import { readJsonBody } from '../../http/body.js'
+import { sendJson } from '../../http/json.js'
+import {
+  attachResume,
+  createEnhancementSession,
+  discardEnhancementSession,
+  getEnhancementSession,
+  saveJobDescription,
+} from './enhancement.service.js'
+import {
+  RESUME_UPLOAD_REQUEST_LIMIT,
+  validateResumeUpload,
+  validateSaveJobDescription,
+} from './enhancement.validation.js'
+
+export async function handleEnhancementRoutes(
+  request: IncomingMessage,
+  response: ServerResponse,
+  _url: URL,
+  segments: string[],
+): Promise<boolean> {
+  if (segments[0] !== 'api' || segments[1] !== 'enhancements') {
+    return false
+  }
+  const rest = segments.slice(2)
+  if (rest.length === 0) {
+    if (request.method === 'POST') {
+      sendJson(response, 201, createEnhancementSession())
+      return true
+    }
+    return false
+  }
+  const id = rest[0] as string
+  if (rest.length === 1) {
+    if (request.method === 'GET') {
+      sendJson(response, 200, getEnhancementSession(id))
+      return true
+    }
+    if (request.method === 'DELETE') {
+      discardEnhancementSession(id)
+      response.writeHead(204)
+      response.end()
+      return true
+    }
+    return false
+  }
+  if (rest.length === 2 && rest[1] === 'resume' && request.method === 'POST') {
+    const upload = validateResumeUpload(await readJsonBody(request, RESUME_UPLOAD_REQUEST_LIMIT))
+    sendJson(response, 201, attachResume(id, upload))
+    return true
+  }
+  if (rest.length === 2 && rest[1] === 'job-description' && request.method === 'PUT') {
+    const input = validateSaveJobDescription(await readJsonBody(request))
+    sendJson(response, 200, saveJobDescription(id, input.jobDescription))
+    return true
+  }
+  return false
+}

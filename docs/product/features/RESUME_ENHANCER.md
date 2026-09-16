@@ -192,17 +192,44 @@ Before AI processing, clearly state:
 
 > **Your resume and job description will be sent over the internet to the AI provider you selected so the AI can analyze or enhance them. How your data is handled by that provider is governed by that provider's privacy policy and terms.**
 
+The disclosure must clearly communicate that:
+
+- the application is local-first, but AI processing requires sending the relevant data to the configured external AI provider;
+- resume and job description content may therefore be transmitted over the internet;
+- the privacy, retention, security, and handling of that data are subject to the configured provider's policies and terms;
+- the application does not control the provider's data-handling practices;
+- users should review the provider's privacy and data-use policies before using AI features.
+
+The disclosure must be prominent enough that a user cannot reasonably assume AI processing is entirely local.
+
+The product must not imply that it guarantees provider-side privacy.
+
 ## 17. AI Provider Settings
 
-Settings provides:
+Settings is reachable from the application navigation and provides:
 
 - AI Provider dropdown
 - API Key field
 - Save/Update
+- Clear
 
-API keys are securely stored on the user's PC. The browser never calls the provider directly.
+The initial supported provider is **OpenAI**.
 
-M9 does not expose model/reasoning selection, but the architecture supports adding it later.
+The product is provider-agnostic: additional providers are added through new provider adapters without changing this workflow. Only implemented providers appear in the list.
+
+The user supplies and owns the API key.
+
+API keys are stored using the operating system's secure credential storage. There is no plaintext fallback: if secure credential storage is unavailable, the product reports that clearly rather than storing the key insecurely.
+
+The API key is never returned by an API response, never stored in browser storage, never placed in a URL, and never displayed after it is saved. The browser never calls the provider directly.
+
+Settings shows whether AI is configured, and allows the configuration to be cleared.
+
+Configuration is validated structurally only. There is no live test request and no "test connection" action.
+
+M9 does not expose model/reasoning selection, but the architecture supports adding it later. The application selects the model internally based on the operation.
+
+Usage and billing information are not shown in the product; users review them through the provider's own dashboard.
 
 ## 18. Out of Scope
 

@@ -12,6 +12,8 @@ const TITLES: Array<[RegExp, string]> = [
   [/^\/people\/[^/]+\/edit$/, 'Edit Person - Job Search Assistant'],
   [/^\/people\/[^/]+$/, 'Person Details - Job Search Assistant'],
   [/^\/people$/, 'Networking - Job Search Assistant'],
+  [/^\/resume-enhancer/, 'Resume Enhancer - Job Search Assistant'],
+  [/^\/settings$/, 'Settings - Job Search Assistant'],
   [/^\/$/, 'Dashboard - Job Search Assistant'],
 ]
 
@@ -85,10 +87,22 @@ export function AppShell() {
               Applications
             </NavLink>
             <NavLink
+              to="/resume-enhancer"
+              className={({ isActive }) => (isActive ? 'nav-link nav-link--active' : 'nav-link')}
+            >
+              Resume Enhancer
+            </NavLink>
+            <NavLink
               to="/people"
               className={({ isActive }) => (isActive ? 'nav-link nav-link--active' : 'nav-link')}
             >
               Networking
+            </NavLink>
+            <NavLink
+              to="/settings"
+              className={({ isActive }) => (isActive ? 'nav-link nav-link--active' : 'nav-link')}
+            >
+              Settings
             </NavLink>
           </nav>
           <button

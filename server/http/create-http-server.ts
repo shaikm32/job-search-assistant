@@ -4,9 +4,11 @@ import {
   type Server,
   type ServerResponse,
 } from 'node:http'
+import { handleAiRoutes } from '../modules/ai/ai.routes.js'
 import { handleApplicationRoutes } from '../modules/applications/application.routes.js'
 import { handleDashboardRoutes } from '../modules/dashboard/dashboard.routes.js'
 import { handleDocumentRoutes } from '../modules/documents/document.routes.js'
+import { handleEnhancementRoutes } from '../modules/enhancements/enhancement.routes.js'
 import { handlePeopleRoutes } from '../modules/people/person.routes.js'
 import { sendApiError } from './api-errors.js'
 import { sendHealthResponse } from './health.js'
@@ -26,6 +28,9 @@ async function dispatchRequest(
   if (await handleApplicationRoutes(request, response, requestUrl, segments)) {
     return
   }
+  if (await handleAiRoutes(request, response, requestUrl, segments)) {
+    return
+  }
   if (await handleDashboardRoutes(request, response, requestUrl, segments)) {
     return
   }
@@ -33,6 +38,9 @@ async function dispatchRequest(
     return
   }
   if (await handleDocumentRoutes(request, response, requestUrl, segments)) {
+    return
+  }
+  if (await handleEnhancementRoutes(request, response, requestUrl, segments)) {
     return
   }
 
