@@ -5,8 +5,10 @@ import {
   attachResume,
   createEnhancementSession,
   discardEnhancementSession,
+  getEnhancementOperationStatus,
   getEnhancementSession,
   saveJobDescription,
+  startEnhancementAnalysis,
 } from './enhancement.service.js'
 import {
   RESUME_UPLOAD_REQUEST_LIMIT,
@@ -48,6 +50,18 @@ export async function handleEnhancementRoutes(
   if (rest.length === 2 && rest[1] === 'resume' && request.method === 'POST') {
     const upload = validateResumeUpload(await readJsonBody(request, RESUME_UPLOAD_REQUEST_LIMIT))
     sendJson(response, 201, attachResume(id, upload))
+    return true
+  }
+  if (rest.length === 2 && rest[1] === 'analyze' && request.method === 'POST') {
+    // Starts the analysis AI operation. The request returns quickly with an
+    // operation ID; status is observed through the polling endpoint
+    // (AI_EXECUTION_AND_PROGRESS.md §1, §7).
+    sendJson(response, 202, startEnhancementAnalysis(id))
+    return true
+  }
+  if (rest.length === 3 && rest[1] === 'operations' && request.method === 'GET') {
+    // Authoritative execution status for one of the session's operations.
+    sendJson(response, 200, getEnhancementOperationStatus(id, rest[2] as string))
     return true
   }
   if (rest.length === 2 && rest[1] === 'job-description' && request.method === 'PUT') {

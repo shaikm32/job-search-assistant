@@ -2,6 +2,14 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
+import { ANALYSIS_STEP_PLAN, createAnalysisRunner } from './enhancement.analysis.js'
+import {
+  getAiOperationStatus,
+  invalidateOperationsForSession,
+  startAiOperation,
+} from '../ai/ai-operation.engine.js'
+import { AiNotConfiguredError } from '../ai/ai.errors.js'
+import { readConfiguredCredential } from '../ai/ai.service.js'
 import {
   MAX_RECENT_ENHANCEMENTS,
   RECENT_ENHANCEMENT_RETENTION_DAYS,
@@ -12,7 +20,8 @@ import {
 import { resolveAppPaths } from '../../config/paths.js'
 import { getDatabase } from '../../database/connection.js'
 import { runInTransaction } from '../../database/transactions.js'
-import { ConflictError, NotFoundError } from '../../http/api-errors.js'
+import { ConflictError, NotFoundError, ValidationError } from '../../http/api-errors.js'
+import type { AiOperationStatus } from '../../../shared/domain/ai-operation.js'
 import { sanitizeStoredBaseName } from '../documents/document.service.js'
 import {
   deleteEnhancementSession,
@@ -242,6 +251,10 @@ export function attachResume(id: string, upload: ResumeUploadInput): Enhancement
  * (RESUME_ENHANCER.md §15, PD-M9-012).
  */
 export function discardEnhancementSession(id: string): void {
+  // Any active AI operation for this session is invalidated first so a late
+  // provider response can never mutate a discarded session (ADR-004). This is
+  // internal invalidation, not a user-facing cancel control.
+  invalidateOperationsForSession(id, 'This enhancement session was discarded.')
   const db = getDatabase()
   const removedArtifacts = runInTransaction(db, () => {
     const artifacts = listEnhancementArtifactsBySession(db, id)
@@ -254,4 +267,57 @@ export function discardEnhancementSession(id: string): void {
   // Managed copies are removed only after the records committed.
   removeManagedCopies(removedArtifacts)
   removeSessionDirIfEmpty(id)
+}
+
+/**
+ * Starts the analysis AI operation for a session (AI_EXECUTION_AND_PROGRESS.md
+ * §7 polling contract).
+ *
+ * Inputs are validated and AI configuration is checked before any operation is
+ * created, so an unconfigured or incomplete request is rejected safely without
+ * calling a provider (AI_ARCHITECTURE.md §18). The session must hold a resume
+ * and a saved job description (RESUME_ENHANCER.md §4).
+ */
+export function startEnhancementAnalysis(id: string): { operationId: string } {
+  const db = getDatabase()
+  const record = getEnhancementSessionById(db, id)
+  if (!record) {
+    throw new NotFoundError('Enhancement session not found.')
+  }
+  const resume = findEnhancementArtifactByKind(db, id, RESUME_KIND)
+  if (!resume) {
+    throw new ValidationError('Upload a resume before starting the enhancement.')
+  }
+  if (!record.jobDescription || record.jobDescription.trim().length === 0) {
+    throw new ValidationError('Save a job description before starting the enhancement.')
+  }
+  // Fail fast on missing AI configuration: no operation is created and no
+  // provider is contacted. Only presence is checked; the credential value is
+  // never retained here.
+  if (!readConfiguredCredential()) {
+    throw new AiNotConfiguredError()
+  }
+
+  const started = startAiOperation({
+    sessionId: id,
+    operation: 'analyze_resume',
+    steps: ANALYSIS_STEP_PLAN,
+    runner: createAnalysisRunner({ resume, jobDescription: record.jobDescription }),
+  })
+  return { operationId: started.operationId }
+}
+
+/**
+ * Returns the authoritative execution status of one of the session's AI
+ * operations. The operation must exist and belong to the session.
+ */
+export function getEnhancementOperationStatus(
+  sessionId: string,
+  operationId: string,
+): AiOperationStatus {
+  const db = getDatabase()
+  if (!getEnhancementSessionById(db, sessionId)) {
+    throw new NotFoundError('Enhancement session not found.')
+  }
+  return getAiOperationStatus(sessionId, operationId)
 }

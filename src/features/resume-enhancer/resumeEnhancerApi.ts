@@ -3,6 +3,7 @@ import {
   type EnhancementArtifactSummary,
   type EnhancementSession,
 } from '../../../shared/domain/enhancement.js'
+import type { AiOperationStatus } from '../../../shared/domain/ai-operation.js'
 import { ApiError, apiRequest } from '../../api/client.js'
 
 /** Resume input is PDF or DOCX only; DOC is rejected (PD-M9-013). */
@@ -90,4 +91,28 @@ export function discardEnhancementSession(sessionId: string): Promise<void> {
   return apiRequest<void>(`/api/enhancements/${encodeURIComponent(sessionId)}`, {
     method: 'DELETE',
   })
+}
+
+/**
+ * Starts the analysis AI operation. The backend returns an operation ID
+ * immediately; execution status is observed by polling
+ * (AI_EXECUTION_AND_PROGRESS.md §7).
+ */
+export function startEnhancementAnalysis(
+  sessionId: string,
+): Promise<{ operationId: string }> {
+  return apiRequest<{ operationId: string }>(
+    `/api/enhancements/${encodeURIComponent(sessionId)}/analyze`,
+    { method: 'POST' },
+  )
+}
+
+/** Retrieves authoritative backend execution status for one operation. */
+export function getEnhancementOperationStatus(
+  sessionId: string,
+  operationId: string,
+): Promise<AiOperationStatus> {
+  return apiRequest<AiOperationStatus>(
+    `/api/enhancements/${encodeURIComponent(sessionId)}/operations/${encodeURIComponent(operationId)}`,
+  )
 }

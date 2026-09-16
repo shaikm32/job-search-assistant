@@ -51,7 +51,17 @@ GET    /api/enhancements/:id
 DELETE /api/enhancements/:id
 POST   /api/enhancements/:id/resume
 PUT    /api/enhancements/:id/job-description
+POST   /api/enhancements/:id/analyze
+GET    /api/enhancements/:id/operations/:operationId
 ```
+
+`POST /api/enhancements/:id/analyze` starts the analysis AI operation and
+returns `202` with `{ "operationId" }`. `GET
+/api/enhancements/:id/operations/:operationId` returns the authoritative
+backend execution status with named progress steps
+(AI_EXECUTION_AND_PROGRESS.md §7), which the frontend polls. In this
+execution-infrastructure slice the operation's canonical result is consumed by
+later slices; no analysis presentation is served yet.
 
 AI configuration (M9 Settings — currently implemented in the M9-B slice):
 
@@ -68,7 +78,6 @@ Enhancement sessions are not tied to an Application: the user enhances a resume 
 The following Resume Enhancer API groups are future M9 work and are not yet implemented:
 
 ```text
-Analysis / operation status
 Enhancement
 Re-analysis
 Cover letter
