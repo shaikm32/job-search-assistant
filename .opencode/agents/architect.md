@@ -6,6 +6,7 @@ permission:
     "*": deny
     ".task.md": allow
   bash:
+    "*": allow
     "git commit*": ask
     "git push*": ask
   task: deny
