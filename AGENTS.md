@@ -234,6 +234,40 @@ unless it was actually performed.
 
 If a required validation cannot be run, state that clearly.
 
+### Scope- and Risk-Aware Validation
+
+Validation must be proportional to the change, not a fixed full-suite ritual.
+
+Before running validation, identify the changed files or components, the
+behavior those changes could affect, and the existing checks that cover that
+behavior; then select the smallest validation set that gives reasonable
+confidence in the change.
+
+"Minimum sufficient validation" does not mean "run fewer tests regardless of
+risk." Correctness takes priority over runtime. Expand validation whenever
+meaningful regression risk extends beyond the directly affected area.
+
+Typical validation depth by change:
+
+- documentation-only or configuration-only: no product test suite is normally
+  required; verify the edited document or configuration is well-formed and
+  consistent with the surrounding content;
+- UI-only: relevant UI/component tests and, where behavior or workflow is
+  affected, manual verification of the affected flow;
+- isolated backend change: the tests and type checks covering the changed
+  module and its direct contracts;
+- AI/provider change: the tests covering the provider integration plus
+  validation of prompt, request, response, error, and fallback handling;
+- database or schema change: migration and persistence tests, including
+  upgrade/rollback or data-compatibility checks where applicable;
+- cross-module change: tests for every affected module and their integration
+  boundaries;
+- major architectural or otherwise high-risk change: the broadest relevant
+  regression set, including the full suite when justified.
+
+Running the full suite is permitted when the change justifies it; it is not
+the default.
+
 ### Validation Correction Limit
 
 If validation identifies a defect requiring another code correction:

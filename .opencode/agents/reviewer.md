@@ -6,7 +6,6 @@ permission:
     "*": deny
     ".task.md": allow
   bash:
-    "*": allow
     "git commit*": ask
     "git push*": ask
   task: deny
@@ -45,6 +44,44 @@ REVIEW FOR
 - Violations of documented architecture.
 - Missing handling required by the supplied requirements.
 - Missing validation for changed behavior.
+
+VALIDATION STRATEGY
+
+The general validation principle is defined in AGENTS.md §10 (Scope- and
+Risk-Aware Validation). Apply it as follows.
+
+Before running any validation, identify:
+
+1. The files and components that changed.
+2. The behavior those changes could affect.
+3. The existing tests and checks that cover that behavior.
+4. The smallest validation set that gives reasonable confidence in the change.
+
+Run that selected validation, then state why it was sufficient. Do not default
+to the full test suite, and do not run validation the change does not justify.
+
+Select validation depth from the change's risk:
+
+- documentation-only or configuration-only: no product test suite; confirm the
+  changed document or configuration is well-formed and consistent;
+- UI-only: relevant UI/component tests, plus manual verification when behavior
+  or workflow is affected;
+- isolated backend change: tests and type checks for the changed module and its
+  direct contracts;
+- AI/provider change: provider-integration tests plus prompt, request,
+  response, error, and fallback handling;
+- database or schema change: migration and persistence tests, including
+  upgrade/rollback or data-compatibility checks where applicable;
+- cross-module change: tests for every affected module and their integration
+  boundaries;
+- major architectural or otherwise high-risk change: the broadest relevant
+  regression set, including the full suite when justified.
+
+"Minimum sufficient validation" does not mean "run fewer tests regardless of
+risk." Correctness takes priority over runtime. Expand the validation set when
+meaningful regression risk extends beyond the directly affected area.
+
+The full test suite may be run when justified; it is not the default.
 
 OUTPUT
 
