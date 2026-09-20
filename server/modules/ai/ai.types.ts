@@ -1,12 +1,13 @@
 import type { AiProviderId } from '../../../shared/domain/ai.js'
 
-export interface AiSettingsRecord {
-  provider: AiProviderId | null
-  /** ISO 8601 timestamp of the last configuration change; null when never set. */
-  updatedAt: string | null
+/** Non-secret provider configuration record: the provider is configured. */
+export interface AiProviderConfigurationRecord {
+  provider: AiProviderId
+  /** ISO 8601 timestamp of the last configuration change. */
+  updatedAt: string
 }
 
-export interface AiSettingsRow {
+export interface AiProviderConfigurationRow {
   provider: string
   updated_at: string
 }

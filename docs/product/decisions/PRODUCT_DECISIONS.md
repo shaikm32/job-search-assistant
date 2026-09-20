@@ -52,21 +52,38 @@ Create Application carries only the final resume and cover letter.
 ### PD-M9-016 — Cover Letter
 Generated from final enhanced resume + JD, grounded in available information, no fabricated claims, presented read-only in M9, downloadable as DOCX/PDF.
 
-### PD-M9-017 — AI Provider
-Settings lets the user select an AI provider and provide its API key.
+### PD-M9-017 — Multiple AI Providers
+Settings lets the user configure multiple AI providers, each with its own credential or configuration.
 
-The initial supported provider is **OpenAI**.
+The initial provider set is:
+
+- OpenAI
+- Anthropic
+- Google Gemini
+- DeepSeek
+
+Future provider candidates are Z.ai / GLM, OpenRouter, and Ollama.
 
 The product is provider-agnostic: additional providers are added through new provider adapters without changing Resume Enhancer behaviour.
 
-Only implemented providers appear in the provider list. Placeholder providers are not shown.
+Only implemented and verified providers appear in the provider list. Placeholder providers are not shown.
 
-The API key is supplied and owned by the user.
+Each provider's credential is supplied and owned by the user and is stored independently of other providers.
 
-### PD-M9-018 — Model Selection Deferred
-No model or reasoning-level controls in M9. Architecture remains model-aware.
+Direct providers are independent options. OpenRouter is an independent provider option, not a required gateway for accessing DeepSeek, Z.ai, Anthropic, or any other provider that offers a direct API.
 
-The application selects the model internally based on the AI operation. Users do not see or choose a model.
+Settings does not contain model selection.
+
+### PD-M9-018 — Operation-Time Provider and Model Selection
+During an AI operation, the user selects one of their configured providers and then a model available for that provider.
+
+The selected provider and model are part of the AI operation request; the backend validates provider/model compatibility before execution.
+
+There is no global active provider. The application may remember the last-used provider/model per feature as a convenience preference, and that preference is not provider configuration.
+
+The application selects a sensible default model but the user may choose another supported model.
+
+Reasoning-effort selection is not exposed in M9; the architecture remains capable of representing it.
 
 ### PD-M9-019 — Backend-Only AI
 All AI calls originate from the local backend.
@@ -105,10 +122,17 @@ Raw prompts, full AI responses, and enhancement histories are not permanent prod
 The enhancement may improve overall resume quality, but displayed analysis/gaps remain tied to the JD.
 
 ### PD-M9-027 — Final Output Template
+
+The final enhanced resume and cover letter use dedicated output templates.
+
+The enhanced resume must remain grounded in the user's uploaded resume and must not introduce fabricated employers, titles, dates, responsibilities, achievements, metrics, technologies, qualifications, certifications, education, projects, or other unsupported facts.
+
+The cover letter is generated from the final enhanced resume and the job description and must follow the same non-fabrication requirement.
+
 ### PD-M9-028 — Settings Entry Point
 Settings is reachable from the application navigation.
 
-Settings provides the AI provider dropdown, the API key input, Save/Update, and Clear, and shows whether AI is configured.
+Settings provides provider configuration (provider selection, credential input, Save/Update, and Clear, per provider) and shows which providers are configured. It does not contain model selection.
 
 The user supplies and owns the API key.
 
@@ -122,9 +146,11 @@ If secure credential storage is unavailable, the product reports that clearly in
 The API key is never returned by an API response, is never stored in browser storage, is never placed in a URL, and is never shown in the interface after it is saved.
 
 ### PD-M9-030 — Configuration Validation
-Configuration is validated structurally: the product confirms that a provider is selected and a credential is stored.
+Configuration is validated structurally: the product confirms that a credential/configuration is stored for the provider being configured.
 
 The product does not perform a live AI request to validate the Settings screen, and there is no "test connection" action.
+
+Provider/model compatibility is validated by the backend when an AI operation is requested.
 
 ### PD-M9-031 — Token Usage Source
 M9 provides no token accounting, token dashboard, billing information, or provider usage analytics.

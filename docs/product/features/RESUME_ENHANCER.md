@@ -206,14 +206,14 @@ The product must not imply that it guarantees provider-side privacy.
 
 ## 17. AI Provider Settings
 
-Settings is reachable from the application navigation and provides:
+Settings is reachable from the application navigation and provides, per provider:
 
-- AI Provider dropdown
-- API Key field
+- AI Provider selection
+- API Key / credential field
 - Save/Update
 - Clear
 
-The initial supported provider is **OpenAI**.
+The user may configure multiple providers. The initial provider set is OpenAI, Anthropic, Google Gemini, and DeepSeek; only implemented and verified providers appear in the list.
 
 The product is provider-agnostic: additional providers are added through new provider adapters without changing this workflow. Only implemented providers appear in the list.
 
@@ -227,7 +227,7 @@ Settings shows whether AI is configured, and allows the configuration to be clea
 
 Configuration is validated structurally only. There is no live test request and no "test connection" action.
 
-M9 does not expose model/reasoning selection, but the architecture supports adding it later. The application selects the model internally based on the operation.
+Settings does not contain model selection. When the user performs an AI operation, they choose one of their configured providers and then a model available for that provider (AI_ARCHITECTURE.md §15, PD-M9-018). Reasoning-effort selection is not exposed in M9.
 
 Usage and billing information are not shown in the product; users review them through the provider's own dashboard.
 
@@ -236,7 +236,7 @@ Usage and billing information are not shown in the product; users review them th
 - master resume management
 - URL-based JD extraction/scraping
 - permanent enhancement history
-- model/reasoning selection UI
+- reasoning-effort selection UI
 - DOC input
 - unsupported OCR scenarios unless separately approved
 - automatic Application field population from JD

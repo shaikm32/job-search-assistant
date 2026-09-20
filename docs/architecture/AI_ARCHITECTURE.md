@@ -1,7 +1,7 @@
 # AI Architecture — M9 Resume Enhancer
 
 **Status:** Approved for implementation
-**Last updated:** 2026-09-16
+**Last updated:** 2026-09-18
 
 ## 1. Purpose
 
@@ -14,23 +14,38 @@ Defines provider abstraction, credential handling, model selection, structured o
 - All AI calls happen through the local backend. The React frontend never calls an AI provider directly.
 - AI features depend on the provider-agnostic abstraction, never on a vendor SDK or vendor HTTP API.
 - Provider-specific SDKs, endpoints, authentication, model names, request formats, and response formats remain behind provider adapters.
-- The first supported provider is **OpenAI**. It is the first adapter, not the architectural dependency of the application.
-- Additional providers must be addable by adding adapters. Feature and business logic must not be refactored to support them.
-- Only implemented providers are registered. Placeholder providers are not defined.
-- The provider registry is the only place that maps a configured provider to an adapter.
+- The application supports multiple AI providers.
+- A provider is an independently selectable AI service with its own credential/configuration and adapter.
+- Direct providers must be integrated directly where supported. Multi-model gateways such as OpenRouter are independent provider options, not mandatory gateways for accessing other providers.
+- Only providers with implemented and verified adapters are registered and exposed to users. Placeholder providers must never appear in the UI.
+- Additional providers must be addable without changing AI feature/business logic.
+- The provider registry is the authoritative runtime mapping between provider identifiers and provider adapters.
 
 ### Contracts
 
 - The product owns canonical AI domain contracts; provider responses are translated and validated before use.
 - Structured output is a first-class internal concept: every AI operation defines the canonical structure it returns, independent of any provider response schema.
 
-### Configuration
+### Configuration and model selection
 
-- Users select an AI provider and provide an API key in Settings.
-- M9 exposes only provider and API key.
-- The internal abstraction can represent provider, credential, model, reasoning configuration, AI operation, and structured output, so model and reasoning configuration can be exposed later without refactoring the provider architecture.
-- M9 does not expose model or reasoning-level selection.
-- Model choice is an internal implementation decision resolved by the AI service through the provider adapter.
+- Users may configure multiple AI providers in Settings.
+- Settings is responsible for provider configuration, not AI model selection.
+- For each provider, the user may provide the credentials required by that provider.
+- Credentials are stored separately per provider using the approved secure credential mechanism.
+- AI features allow the user to choose one of their configured providers for each AI operation.
+- After selecting a provider, the AI feature allows the user to select an available model for that provider.
+- Model selection is therefore an operation-time user choice, not a global application setting.
+- The application may remember the user's last-used provider and model per feature as a convenience preference, but this does not create a global active provider.
+- The selected provider and model are part of the AI operation request.
+- Provider adapters own knowledge of their supported models and provider-specific model identifiers.
+- Feature code must never contain vendor-specific model names.
+- Model availability is provider-specific and may vary by provider account, API access, or provider catalog.
+- The application must not assume that every model supports every AI capability.
+
+### Reasoning configuration
+- Reasoning configuration is not exposed in M9.
+- The internal AI abstraction must remain capable of representing provider/model-specific reasoning capabilities, so a user-facing reasoning control can be added later without refactoring.
+- Provider adapters translate generic reasoning intent into provider-specific parameters where supported.
 
 ### Content integrity
 
@@ -41,33 +56,79 @@ Defines provider abstraction, credential handling, model selection, structured o
 
 ## 3. Provider Architecture
 
-```text
-Feature (Resume Enhancer)
-      ↓
-   AI Service
-      ↓
-Provider Registry
-      ↓
-Provider Adapter
-      ↓
-External AI Provider
-```
+                         ┌── OpenAI Adapter ──────── OpenAI
+                         │
+                         ├── Anthropic Adapter ───── Anthropic
+Feature                  │
+   ↓                     ├── Gemini Adapter ──────── Google
+AI Service               │
+   ↓                     ├── DeepSeek Adapter ────── DeepSeek
+Provider Registry ───────┤
+   ↓                     ├── Z.ai Adapter ────────── Z.ai
+Selected Provider        │
+   ↓                     ├── OpenRouter Adapter ──── OpenRouter
+Provider Adapter         │
+   ↓                     └── Ollama Adapter ──────── Ollama
+External Provider
+
+The registry exposes only providers whose adapters are implemented and verified.
+
+- Implemented today: OpenAI.
+- Planned initial set: Anthropic, Google Gemini, DeepSeek.
+- Future candidates: Z.ai / GLM, OpenRouter, Ollama.
 
 ### Responsibilities
 
-- **Feature** — requests an AI operation and consumes canonical results. Contains no provider-specific logic.
-- **AI Service** — owns the AI workflow: resolves configuration and credential, resolves the provider adapter, resolves the model for the operation, invokes the adapter, validates the response, and returns canonical contracts.
-- **Provider Registry** — maps a configured provider identifier to a registered adapter. Providers that are not registered are not selectable.
-- **Provider Adapter** — hides all vendor behavior: authentication, endpoints, model names, request construction, response parsing, and provider error translation.
+- **Feature** — Requests an AI operation with a selected provider and model. Contains no provider-specific API logic.
+
+- **AI Service** — Owns the generic AI workflow:
+  - validate the requested provider
+  - validate that the provider is configured
+  - retrieve the provider credential/configuration securely
+  - resolve the provider adapter
+  - validate/resolve the requested model through provider capabilities
+  - construct the provider-neutral AiRequest
+  - invoke the adapter
+  - validate the provider response
+  - convert it into the canonical application contract
+  - return only the safe result
+
+- **Provider Registry**
+  - Registers implemented providers.
+  - Exposes safe provider metadata to the frontend.
+  - Resolves provider identifiers to adapters.
+  - Must not register placeholder providers.
+
+- **Provider Adapter**
+Owns:
+  - provider endpoint
+  - authentication mechanism
+  - provider model identifiers
+  - model capabilities
+  - request translation
+  - structured-output translation
+  - reasoning translation
+  - response parsing
+  - provider-specific error handling
+
+The adapter boundary must prevent provider-specific behavior from entering feature code or canonical domain contracts.
+
 - **External AI Provider** — reached only by an adapter, only from the local backend.
 
-### Initial provider
+### Initial providers
 
-The first supported provider is OpenAI.
+The initial multi-provider implementation targets:
 
-Only OpenAI is implemented initially.
+- OpenAI
+- Anthropic
+- Google Gemini
+- DeepSeek
 
-OpenAI must not become the architectural dependency of the application:
+Future provider candidates: Z.ai / GLM, OpenRouter, Ollama.
+
+Only implemented and verified providers are registered and displayed. At the time of writing, OpenAI is the only implemented adapter; each other provider appears only once its adapter is implemented and verified.
+
+No provider must become the architectural dependency of the application:
 
 - no vendor SDK, endpoint, model name, or response shape may appear in feature or business logic;
 - adding a provider must be possible by adding an adapter and registering it;
@@ -88,9 +149,9 @@ AI operation
 structured output
 ```
 
-M9 exposes only provider + API key.
+M9 exposes provider configuration in Settings and provider/model selection at AI operation time. Reasoning configuration is not exposed in M9.
 
-The system must not assume that one API key is permanently bound to one model. Model availability is provider/account-specific and is resolved by the adapter.
+The system must not assume that one credential is permanently bound to one model, or that every model supports every capability. Model availability is provider/account-specific; the adapter owns provider model identifiers and the AI service validates the user's selection against adapter-provided provider capabilities.
 
 ## 4. Credential Storage
 
@@ -135,7 +196,7 @@ The abstraction exposes only:
 - Never be exposed to frontend JavaScript after submission, except transiently while the user is entering it.
 - Backend reads the credential only when making provider requests.
 
-Settings may return safe metadata such as the configured provider and configured/not-configured state, never plaintext credentials.
+Settings may return safe metadata such as the configured providers and their configured/not-configured state, never plaintext credentials.
 
 ### Platform behaviour and dependency implications
 
@@ -151,7 +212,7 @@ Settings may return safe metadata such as the configured provider and configured
 
 ## 5. Privacy Disclosure
 
-M9 uses cloud AI providers. Before AI processing, clearly disclose:
+M9 uses external AI providers. Before AI processing, clearly disclose:
 
 > **Your resume and job description will be sent over the internet to the AI provider you selected so the AI can analyze or enhance them. How your data is handled by that provider is governed by that provider's privacy policy and terms.**
 
@@ -173,7 +234,9 @@ Do not make unsupported claims regarding a provider's data retention, privacy, t
 
 ### Analyze Resume
 
-Input: normalized resume + JD.
+Input: normalized resume + JD. The normalized resume text is extracted locally
+from the stored PDF/DOCX at operation time per ADR-005; it is transient and
+never persisted.
 
 Output: `AnalysisResult`.
 
@@ -354,40 +417,119 @@ All AI calls happen through the backend. Frontend code must never call OpenAI or
 
 The backend is responsible for the complete call sequence:
 
-1. retrieve the credential from the secure credential store
-2. resolve the configured provider
-3. resolve the model internally
-4. construct the provider-specific request
-5. perform the AI call
-6. validate the provider response
-7. convert it into the application's provider-agnostic structured contract
-8. return only the required safe result to the frontend
+1. receive selected provider + model from the AI feature
+2. validate provider registration
+3. validate provider configuration
+4. retrieve provider credential/configuration securely
+5. resolve provider adapter
+6. validate model against provider capabilities
+7. construct provider-neutral AI request
+8. perform provider-specific request through the adapter
+9. validate provider response
+10. convert to canonical application contract
+11. return safe result
 
-Feature modules must not contain provider-specific API logic.
-
-The frontend receives canonical results and safe configuration state only. It never receives the credential, provider request payloads, raw provider responses, authorization headers, or internal storage details.
+The important architectural rule is:
+The feature chooses the provider/model; the backend validates and executes that choice.
 
 ## 15. Model Selection
 
-Users do not select models in M9.
+Model selection is user-facing at AI operation time.
 
-The application chooses the model based on the AI operation.
+Settings does not contain a model selector.
 
-Model choice should be driven by factors such as:
+Instead:
 
-- structured-output reliability
-- reasoning quality
-- instruction following
-- context capacity
-- latency
-- cost
-- suitability for resume/JD analysis and transformation
+Settings
+   ↓
+Configure Provider + Credential
 
-Model selection must not be hard-coded into feature components.
+AI Feature
+   ↓
+Select Configured Provider
+   ↓
+Select Model Available for Provider
+   ↓
+Execute AI Operation
 
-Model resolution stays behind the provider adapter / AI service boundary so the model can later become configurable without refactoring the provider architecture.
+### Provider selection
 
-Model availability is provider/account-specific and is resolved by the adapter. The system must not assume one API key is permanently bound to one model.
+An AI feature must display only providers that the user has configured successfully.
+
+For example, if the user has configured:
+
+OpenAI
+DeepSeek
+Anthropic
+
+the feature may offer those three providers.
+
+An unconfigured provider must not be selectable for an operation.
+
+### Model selection
+
+- After selecting a provider, the feature displays the models available for that provider.
+- Model metadata should be supplied by the provider architecture rather than hard-coded into feature components.
+- A model descriptor may contain:
+modelId
+displayName
+supportedOperations
+structuredOutputCapability
+reasoningCapability
+contextCapacity
+Only fields required by the application should be exposed to the frontend.
+
+### Model validity
+
+Before execution, the backend must verify:
+
+provider is registered
+provider is configured
+model belongs to the selected provider
+model supports the requested operation
+required capability exists for the operation
+
+The backend must never trust model identifiers supplied by the frontend merely because they appear in the UI.
+
+### Model defaults
+
+The application may provide a default model for each provider/operation.
+
+The user may override that default by selecting another supported model.
+
+A remembered model is a convenience preference, not permanent provider configuration.
+
+Provider-specific model IDs
+
+Provider adapters own provider-specific model identifiers.
+
+For example:
+OpenAI adapter
+  modelId → provider model identifier
+
+DeepSeek adapter
+  modelId → provider model identifier
+
+Anthropic adapter
+  modelId → provider model identifier
+
+Feature code must use provider-neutral model identifiers/contracts and must not embed vendor model names.
+
+### Implementation status
+
+The initial M9 provider set is:
+
+- OpenAI
+- Anthropic
+- Google Gemini
+- DeepSeek
+
+All four providers are implemented and verified through independent provider adapters.
+
+Only implemented and verified providers are registered in the provider registry and exposed to users.
+
+Future provider candidates such as Z.ai/GLM, OpenRouter, and Ollama are not part of the initial M9 implementation.
+
 
 ## 16. Reasoning Configuration
 
@@ -407,45 +549,83 @@ Rules:
 
 ## 17. Provider Configuration and Settings
 
-Settings lets the user select the AI provider and enter an API key.
+Settings configures providers, not models.
 
-Operations:
+Settings responsibilities
 
-- AI Provider dropdown
-- API key input
-- Save / Update
-- Clear
+The Settings experience allows the user to:
 
-For M9-B, the provider list contains only OpenAI.
+select an AI provider
+enter that provider's credential
+save/update the provider configuration
+clear the provider configuration
+view which providers are configured
 
-### Configuration validation
+The user may configure multiple providers.
 
-Configuration validation determines whether the configuration is **structurally usable**:
+Conceptually:
+Configured AI Providers
 
-- a provider is selected and is registered
-- a credential is present in the secure credential store for that provider
+✓ OpenAI
+✓ DeepSeek
+✓ Anthropic
+✓ Google Gemini
 
-Validation must not perform a live AI request merely to validate the Settings screen. There is no "test connection" requirement.
+Each provider's credential is isolated from other providers.
 
-Validation must never return the credential, and must never include it in an error message.
+### No model selector in Settings
 
-### Safe configuration state
+Model selection does not belong in Settings.
 
-The frontend receives only safe state:
+A model is selected when the user performs an AI operation.
 
-- selected provider
-- configured / not configured
-- safe provider metadata (such as display name and whether credentials can be stored)
+This allows the same configured provider to be used with different models for different tasks.
 
-The frontend must never receive the API key.
+### AI feature configuration
 
-The API key exists in the browser only transiently while the user is entering it.
+An AI feature such as Resume Enhancer exposes:
+AI Provider
+[ DeepSeek ▼ ]
 
-### Restart persistence
+Model
+[ DeepSeek model ▼ ]
 
-Configuration survives application restarts.
+The Provider list contains only configured providers.
 
-Changing or clearing the provider or API key must affect subsequent AI operations.
+The Model list contains only models supported by the selected provider.
+
+### Provider configuration state
+The frontend receives safe metadata only:
+
+provider ID
+display name
+configured/not-configured state
+provider capabilities needed by the UI
+safe model metadata where required
+
+The frontend never receives:
+
+API keys
+secure-store identifiers
+authorization headers
+provider secrets
+
+### No global active provider
+
+There is no globally active AI provider.
+
+Each AI operation specifies its provider and model.
+
+The application may remember the last-used provider/model per feature as a convenience preference.
+
+Credential lifecycle
+
+Provider credentials remain independently stored.
+
+Clearing Provider A must not clear Provider B.
+
+Switching the provider used for an operation must not implicitly delete another provider's credentials.
+
 
 ## 18. Provider Failures and Safe Errors
 

@@ -1,22 +1,17 @@
-import type { AiProviderId, AiProviderDescriptor } from '../../../shared/domain/ai.js'
+import type {
+  AiOperation,
+  AiProviderDescriptor,
+  AiProviderId,
+  AiStructuredOutputSupport,
+} from '../../../shared/domain/ai.js'
 
 /**
- * Canonical AI operation identifiers.
- *
- * Declared here so the abstraction is operation-aware from the start and
- * provider adapters can map operations to provider parameters. M9-B performs
- * no AI calls; the identifiers exist so later slices add operations without
- * refactoring the provider architecture.
+ * Canonical AI operation identifiers are defined in the shared domain
+ * contracts (`shared/domain/ai.ts`) because operations are application
+ * concepts, independent of any provider. Re-exported here so provider-layer
+ * modules can import the full provider contract from one module.
  */
-export const AI_OPERATIONS = [
-  'analyze_resume',
-  'generate_suggestions',
-  'enhance_resume',
-  'reanalyze_resume',
-  'generate_cover_letter',
-] as const
-
-export type AiOperation = (typeof AI_OPERATIONS)[number]
+export type { AiOperation } from '../../../shared/domain/ai.js'
 
 /**
  * Generic reasoning intent.
@@ -34,6 +29,31 @@ export interface AiReasoningConfiguration {
 }
 
 /**
+ * Capabilities an operation requires of the selected model. Validated before
+ * execution so the backend never assumes every model supports every operation
+ * (ADR-006, AI_ARCHITECTURE.md §15).
+ */
+export interface AiOperationRequirements {
+  /** True when the operation needs structured output from the provider. */
+  structuredOutput: boolean
+  /** True when the operation needs provider-translated reasoning control. */
+  reasoning: boolean
+}
+
+/**
+ * Capability requirements per operation. Every M9 operation returns a
+ * canonical structured contract, so structured output is required everywhere;
+ * reasoning remains optional because M9 exposes no reasoning control.
+ */
+export const AI_OPERATION_REQUIREMENTS: Record<AiOperation, AiOperationRequirements> = {
+  analyze_resume: { structuredOutput: true, reasoning: false },
+  generate_suggestions: { structuredOutput: true, reasoning: false },
+  enhance_resume: { structuredOutput: true, reasoning: false },
+  reanalyze_resume: { structuredOutput: true, reasoning: false },
+  generate_cover_letter: { structuredOutput: true, reasoning: false },
+}
+
+/**
  * Structured output requirement for an operation: the canonical shape the
  * adapter must produce, independent of any provider response schema.
  */
@@ -47,17 +67,19 @@ export interface AiStructuredOutputRequest {
 /**
  * Provider-agnostic AI request.
  *
- * Carries every concept the architecture requires internally — provider,
- * model, reasoning configuration, AI operation, and structured output — while
- * remaining independent of any vendor wire format.
+ * Carries every concept the architecture requires internally — selected
+ * provider, selected model, reasoning configuration, AI operation, and
+ * structured output — while remaining independent of any vendor wire format.
+ *
+ * `providerId` and `modelId` are canonical application identifiers, not
+ * provider wire identifiers. The adapter maps `modelId` to its provider model
+ * string. No provider-specific fields belong here.
  */
 export interface AiRequest {
   operation: AiOperation
-  /**
-   * Resolved model identifier. Null means the adapter resolves the model for
-   * the operation, which is how M9 behaves (AI_ARCHITECTURE.md §15).
-   */
-  model: string | null
+  providerId: AiProviderId
+  /** Resolved, validated application model identifier (never provider wire). */
+  modelId: string
   /** Generic reasoning intent; adapters translate or ignore it. */
   reasoning: AiReasoningConfiguration | null
   /** Canonical prompt payload owned by the AI service, not by the adapter. */
@@ -84,6 +106,32 @@ export interface AiResponse {
 }
 
 /**
+ * Provider-owned model metadata (ADR-006).
+ *
+ * Lives inside the provider layer: `providerModelId` is the provider's wire
+ * identifier and never leaves the backend; the safe projection exposed to the
+ * frontend is `AiModelDescriptor` in `shared/domain/ai.ts`.
+ */
+export interface AiModelMetadata {
+  /** Application-level, provider-neutral identifier the feature selects. */
+  modelId: string
+  /** Provider wire identifier sent to the provider API. Backend-only. */
+  providerModelId: string
+  displayName: string
+  supportedOperations: readonly AiOperation[]
+  structuredOutput: AiStructuredOutputSupport
+  /**
+   * True when this adapter translates generic reasoning intent for this model.
+   * An adapter that does not must ignore the intent rather than fail (§16).
+   */
+  reasoning: boolean
+  /** Provider-published context window in tokens, when useful. */
+  contextCapacity: number | null
+  /** Operations for which this model is the provider's default choice. */
+  defaultForOperations?: readonly AiOperation[]
+}
+
+/**
  * The canonical internal interface every provider adapter implements.
  *
  * Adding a provider means implementing this interface and registering it;
@@ -92,20 +140,15 @@ export interface AiResponse {
 export interface AiProviderAdapter {
   readonly id: AiProviderId
   readonly descriptor: AiProviderDescriptor
-  /**
-   * Capability flags let the AI service reason about a provider without
-   * assuming every provider supports the same features.
-   */
-  readonly capabilities: {
-    structuredOutput: boolean
-    reasoning: boolean
-  }
+  /** Models this adapter actually supports, with their capabilities. */
+  readonly models: readonly AiModelMetadata[]
   /**
    * Performs an operation. Implementations own authentication, endpoints,
-   * model naming, request construction, response parsing, and provider error
-   * translation.
+   * model wire mapping, request construction, structured-output translation,
+   * reasoning translation, response parsing, and provider error translation.
    *
-   * Not implemented in M9-B: no AI calls occur in this slice.
+   * The credential is supplied by the AI service and must only ever be used as
+   * the provider's authorization mechanism: never logged, stored, or surfaced.
    */
   execute(request: AiRequest, credential: string): Promise<AiResponse>
 }

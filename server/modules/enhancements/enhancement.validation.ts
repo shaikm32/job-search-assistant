@@ -1,7 +1,17 @@
+import { isAiProviderId, type AiProviderId } from '../../../shared/domain/ai.js'
 import type { SaveJobDescriptionInput } from '../../../shared/domain/enhancement.js'
 import { RESUME_UPLOAD_LIMIT } from '../../../shared/domain/enhancement.js'
 import { PayloadTooLargeError, ValidationError } from '../../http/api-errors.js'
 import type { ResumeUploadInput } from './enhancement.types.js'
+
+/**
+ * Maximum request size for starting an analysis operation. The body carries
+ * only identifiers, so this is a defensive bound rather than a product limit.
+ */
+export const ANALYSIS_START_REQUEST_LIMIT = 4 * 1024
+
+/** Defensive bound so a malformed model identifier cannot allocate memory. */
+const MAX_MODEL_ID_LENGTH = 200
 
 /**
  * Maximum raw resume upload request size: decoded limit plus base64 (~33%)
@@ -78,4 +88,40 @@ export function validateSaveJobDescription(body: unknown): SaveJobDescriptionInp
     throw new ValidationError('Please paste the job description.')
   }
   return { jobDescription: body.jobDescription }
+}
+
+/** Provider/model selection submitted when starting the analysis operation. */
+export interface StartAnalysisInput {
+  providerId: AiProviderId
+  /** Requested model, or null to accept the provider's default for the operation. */
+  modelId: string | null
+}
+
+/**
+ * Shape-only validation of the analysis start request. Provider registration,
+ * configuration, model membership, and capability checks belong to the AI
+ * service, which is the single authority for them (ADR-006).
+ */
+export function validateStartAnalysis(body: unknown): StartAnalysisInput {
+  if (!isRecord(body)) {
+    throw new ValidationError('Select an AI provider and model.')
+  }
+  if (!isAiProviderId(body.providerId)) {
+    throw new ValidationError('Select a supported AI provider.')
+  }
+  const providerId = body.providerId
+  if (body.modelId === undefined || body.modelId === null) {
+    return { providerId, modelId: null }
+  }
+  if (typeof body.modelId !== 'string') {
+    throw new ValidationError('Select a supported AI model.')
+  }
+  const modelId = body.modelId.trim()
+  if (modelId.length === 0) {
+    return { providerId, modelId: null }
+  }
+  if (modelId.length > MAX_MODEL_ID_LENGTH) {
+    throw new ValidationError('Select a supported AI model.')
+  }
+  return { providerId, modelId }
 }

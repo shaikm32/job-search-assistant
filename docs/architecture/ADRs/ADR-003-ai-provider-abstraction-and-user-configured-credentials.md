@@ -1,8 +1,9 @@
 # ADR-003 — AI Provider Abstraction and User-Configured Credentials
 
-**Status:** Accepted
+**Status:** Accepted — partially superseded by ADR-006
 **Date:** 2026-09-16
-**Updated:** 2026-09-16 — locked initial provider, credential mechanism, and fallback prohibition
+**Updated:** 2026-09-19 — aligned with ADR-006 multi-provider architecture and initial provider set
+**Superseded in part:** 2026-09-18 — the model-selection and single-initial-provider statements (decision items 5 and 8, the original "Initial provider" section, and the original "Internal model and reasoning configuration") are superseded by ADR-006. Provider abstraction, credential storage, backend-only calls, canonical contracts, and the no-fallback rule remain in force.
 
 ## Context
 
@@ -14,10 +15,10 @@ M9 requires cloud AI processing. Users may use different provider accounts and A
 2. Provider credentials are stored securely on the user's PC using the OS-native secure credential mechanism.
 3. All AI requests originate from the local backend.
 4. Provider-specific integrations live behind an AI provider abstraction.
-5. M9 does not expose model/reasoning selection.
+5. ~~M9 does not expose model/reasoning selection.~~ (superseded by ADR-006: provider and model are selected at AI operation time; reasoning selection remains unexposed)
 6. The abstraction remains model-aware for future configuration.
 7. Provider responses are translated into canonical application contracts.
-8. The first supported provider is **OpenAI**.
+8. ~~The first supported provider is **OpenAI**.~~ (superseded by ADR-006: the initial provider set is OpenAI, Anthropic, Google Gemini, and DeepSeek; only implemented and verified providers are displayed)
 9. There is no plaintext credential fallback.
 
 ## Provider abstraction
@@ -36,17 +37,20 @@ The internal abstraction can represent provider, credential, model, reasoning co
 
 Adding a provider must be possible by adding an adapter and registering it, without refactoring feature or business logic, the frontend, or the canonical contracts.
 
-## Initial provider
+## Initial provider set
 
-OpenAI is the first adapter, not the architectural dependency of the application.
+The initial supported provider set for M9 is:
 
-Only OpenAI is implemented initially; placeholder providers are not defined.
+- OpenAI
+- Anthropic
+- Google Gemini
+- DeepSeek
 
-Reasons OpenAI is first:
+These providers are independently integrated through the provider abstraction.
 
-- it provides the structured-output reliability required by the canonical contracts;
-- it has a stable API available to individual users with their own API key;
-- it supports resume/JD-scale context, which the analysis and enhancement operations require.
+Only implemented and verified providers are registered and displayed to users. Placeholder providers are not defined.
+
+OpenAI was the first adapter implemented during M9-B/M9-D, but the application architecture does not depend on OpenAI. The remaining initial providers are implemented through their own adapters without changing feature or business logic.
 
 ## Credential storage
 
@@ -80,7 +84,11 @@ Reasons:
 
 ## Internal model and reasoning configuration
 
-Model and reasoning configuration remain internal in M9 but are representable in the abstraction, so they can later be exposed without refactoring the provider architecture.
+Model selection is user-facing at AI operation time as defined by ADR-006.
+
+The selected provider and model are part of the AI operation request. The backend validates that the provider is registered and configured, the model belongs to that provider, and the model supports the requested operation and required capabilities.
+
+Reasoning configuration remains internal in M9 and is not exposed as a user-selectable setting. The abstraction remains capable of representing reasoning configuration so it can be exposed later without refactoring the provider architecture.
 
 ## Consequences
 

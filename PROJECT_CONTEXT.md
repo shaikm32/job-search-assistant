@@ -83,9 +83,7 @@ The frontend must never directly communicate with an AI provider using the user'
 
 AI provider integrations must use the documented provider abstraction.
 
-Users may configure their AI provider and API key through the application settings.
-
-The architecture must remain capable of supporting model selection in the future without requiring major refactoring, even though model selection is initially abstracted from the user.
+Users may configure multiple AI providers and their credentials through the application settings. Each AI operation selects one of the configured providers and a model available for that provider (see `docs/architecture/AI_ARCHITECTURE.md` §15 and ADR-006).
 
 Follow `docs/architecture/AI_ARCHITECTURE.md` for all AI implementation decisions.
 

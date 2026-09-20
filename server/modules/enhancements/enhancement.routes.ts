@@ -11,9 +11,11 @@ import {
   startEnhancementAnalysis,
 } from './enhancement.service.js'
 import {
+  ANALYSIS_START_REQUEST_LIMIT,
   RESUME_UPLOAD_REQUEST_LIMIT,
   validateResumeUpload,
   validateSaveJobDescription,
+  validateStartAnalysis,
 } from './enhancement.validation.js'
 
 export async function handleEnhancementRoutes(
@@ -53,10 +55,14 @@ export async function handleEnhancementRoutes(
     return true
   }
   if (rest.length === 2 && rest[1] === 'analyze' && request.method === 'POST') {
-    // Starts the analysis AI operation. The request returns quickly with an
-    // operation ID; status is observed through the polling endpoint
-    // (AI_EXECUTION_AND_PROGRESS.md §1, §7).
-    sendJson(response, 202, startEnhancementAnalysis(id))
+    // Starts the analysis AI operation with the user's selected provider and
+    // model. The request returns quickly with an operation ID; status is
+    // observed through the polling endpoint (AI_EXECUTION_AND_PROGRESS.md §1,
+    // §7, ADR-006).
+    const input = validateStartAnalysis(
+      await readJsonBody(request, ANALYSIS_START_REQUEST_LIMIT),
+    )
+    sendJson(response, 202, startEnhancementAnalysis(id, input))
     return true
   }
   if (rest.length === 3 && rest[1] === 'operations' && request.method === 'GET') {

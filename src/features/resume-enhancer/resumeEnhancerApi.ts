@@ -3,8 +3,13 @@ import {
   type EnhancementArtifactSummary,
   type EnhancementSession,
 } from '../../../shared/domain/enhancement.js'
+import type {
+  AiOperationOptions,
+  AiProviderId,
+} from '../../../shared/domain/ai.js'
 import type { AiOperationStatus } from '../../../shared/domain/ai-operation.js'
 import { ApiError, apiRequest } from '../../api/client.js'
+import { getAiOperationOptions } from '../settings/settingsApi.js'
 
 /** Resume input is PDF or DOCX only; DOC is rejected (PD-M9-013). */
 const EXTENSION_MIME_TYPES: Record<string, string> = {
@@ -94,17 +99,29 @@ export function discardEnhancementSession(sessionId: string): Promise<void> {
 }
 
 /**
- * Starts the analysis AI operation. The backend returns an operation ID
- * immediately; execution status is observed by polling
- * (AI_EXECUTION_AND_PROGRESS.md §7).
+ * Starts the analysis AI operation with the user's selected provider and
+ * model. The backend returns an operation ID immediately; execution status is
+ * observed by polling (AI_EXECUTION_AND_PROGRESS.md §7).
  */
 export function startEnhancementAnalysis(
   sessionId: string,
+  providerId: AiProviderId,
+  modelId: string,
 ): Promise<{ operationId: string }> {
   return apiRequest<{ operationId: string }>(
     `/api/enhancements/${encodeURIComponent(sessionId)}/analyze`,
-    { method: 'POST' },
+    { method: 'POST', body: { providerId, modelId } },
   )
+}
+
+/**
+ * Configured providers and their models for the analysis operation.
+ * Re-exported from the settings API client so resume-enhancer feature code
+ * selects from safe backend metadata rather than hard-coded model names
+ * (AI_ARCHITECTURE.md §15).
+ */
+export function getAnalysisOperationOptions(): Promise<AiOperationOptions> {
+  return getAiOperationOptions('analyze_resume')
 }
 
 /** Retrieves authoritative backend execution status for one operation. */

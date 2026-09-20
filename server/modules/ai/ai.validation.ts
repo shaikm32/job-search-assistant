@@ -1,4 +1,9 @@
-import { isAiProviderId } from '../../../shared/domain/ai.js'
+import {
+  isAiOperation,
+  isAiProviderId,
+  type AiOperation,
+  type AiProviderId,
+} from '../../../shared/domain/ai.js'
 import { ValidationError } from '../../http/api-errors.js'
 import type { SaveAiConfigurationInput } from './ai.types.js'
 
@@ -52,4 +57,27 @@ export function validateSaveAiConfiguration(body: unknown): SaveAiConfigurationI
     )
   }
   return { provider: body.provider, apiKey }
+}
+
+/**
+ * Validates a provider identifier arriving as a request path segment. The
+ * value must be one of the canonical provider identifiers; registration is
+ * checked separately by the service.
+ */
+export function validateAiProviderId(value: unknown): AiProviderId {
+  if (!isAiProviderId(value)) {
+    throw new ValidationError('Select a supported AI provider.')
+  }
+  return value
+}
+
+/**
+ * Validates an operation identifier arriving as a query parameter. The value
+ * must be a canonical application operation, not a provider-specific name.
+ */
+export function validateAiOperation(value: unknown): AiOperation {
+  if (!isAiOperation(value)) {
+    throw new ValidationError('Select a supported AI operation.')
+  }
+  return value
 }

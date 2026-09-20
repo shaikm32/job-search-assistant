@@ -21,6 +21,7 @@ process.env.JOB_SEARCH_ASSISTANT_DATA_DIR = tempDataDir
 
 const { openDatabase, getDatabase } = await import('../server/database/connection.js')
 const { runMigrations } = await import('../server/database/migrate.js')
+const { setAdaptersForTests } = await import('../server/modules/ai/provider.registry.js')
 const {
   AI_OPERATION_TIMEOUT_MS,
   getAiOperationStatus,
@@ -73,10 +74,36 @@ before(() => {
   openDatabase()
   runMigrations(getDatabase())
   setCredentialStore(new InMemoryCredentialStore())
+  // A fake provider is registered for all execution tests: no test ever makes
+  // a live OpenAI call.
+  setAdaptersForTests([
+    {
+      id: 'openai',
+      descriptor: {
+        id: 'openai',
+        displayName: 'OpenAI',
+        credentialLabel: 'OpenAI API key',
+      },
+      models: [
+        {
+          modelId: 'fake-model',
+          providerModelId: 'fake-model',
+          displayName: 'Fake Model',
+          supportedOperations: ['analyze_resume'],
+          structuredOutput: 'json_schema',
+          reasoning: false,
+          contextCapacity: 1000,
+          defaultForOperations: ['analyze_resume'],
+        },
+      ],
+      execute: () => Promise.reject(new Error('raw provider failure leaked-header=Bearer sk-raw-secret')),
+    },
+  ])
 })
 
 after(() => {
   resetAiOperationsForTests()
+  setAdaptersForTests(null)
 })
 
 describe('AI operation engine lifecycle', () => {
@@ -243,7 +270,8 @@ describe('AI concurrency and isolation', () => {
 describe('AI configuration boundary', () => {
   const analysisRequest = {
     operation: 'analyze_resume',
-    model: null,
+    providerId: 'openai',
+    modelId: 'fake-model',
     reasoning: null,
     systemPrompt: 'system',
     userPrompt: 'user',
@@ -251,7 +279,7 @@ describe('AI configuration boundary', () => {
   } as const
 
   it('rejects execution safely when AI is not configured', async () => {
-    await clearAiConfiguration()
+    await clearAiConfiguration('openai')
     await assert.rejects(
       () => executeAiRequest(analysisRequest),
       (error: unknown) => {
@@ -279,11 +307,11 @@ describe('AI configuration boundary', () => {
 
   it('never persists the credential in SQLite', () => {
     saveAiConfiguration({ provider: 'openai', apiKey: SECRET_KEY })
-    const rows = getDatabase().prepare('SELECT * FROM ai_settings').all() as unknown as Array<
+    const rows = getDatabase().prepare('SELECT * FROM ai_provider_configuration').all() as unknown as Array<
       Record<string, unknown>
     >
     assert.equal(rows.length, 1)
-    assert.deepEqual(Object.keys(rows[0] ?? {}).sort(), ['id', 'provider', 'updated_at'])
+    assert.deepEqual(Object.keys(rows[0] ?? {}).sort(), ['provider', 'updated_at'])
     for (const row of rows) {
       assert.ok(!JSON.stringify(row).includes(SECRET_KEY))
     }
@@ -292,10 +320,10 @@ describe('AI configuration boundary', () => {
 
 describe('analysis start path', () => {
   it('rejects the start safely when inputs or AI are missing', async () => {
-    await clearAiConfiguration()
+    await clearAiConfiguration('openai')
     const session = createEnhancementSession()
     assert.throws(
-      () => startEnhancementAnalysis(session.id),
+      () => startEnhancementAnalysis(session.id, { providerId: 'openai', modelId: null }),
       (error: unknown) => error instanceof ApiError && error.statusCode === 400,
     )
     attachResume(session.id, {
@@ -306,7 +334,7 @@ describe('analysis start path', () => {
     saveJobDescription(session.id, 'Senior engineer role')
     // Inputs are now complete but AI is unconfigured: still a safe 400.
     assert.throws(
-      () => startEnhancementAnalysis(session.id),
+      () => startEnhancementAnalysis(session.id, { providerId: 'openai', modelId: null }),
       (error: unknown) => {
         assert.ok(error instanceof AiNotConfiguredError)
         assert.equal(error.statusCode, 400)
@@ -324,7 +352,10 @@ describe('analysis start path', () => {
       content: Buffer.from('resume-bytes'),
     })
     saveJobDescription(session.id, 'Senior engineer role')
-    const started = startEnhancementAnalysis(session.id)
+    const started = startEnhancementAnalysis(session.id, {
+      providerId: 'openai',
+      modelId: 'fake-model',
+    })
     assert.ok(started.operationId)
     // Poll until the backend reports a terminal state.
     let status = getEnhancementOperationStatus(session.id, started.operationId)

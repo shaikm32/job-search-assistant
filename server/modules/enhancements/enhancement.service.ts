@@ -8,8 +8,7 @@ import {
   invalidateOperationsForSession,
   startAiOperation,
 } from '../ai/ai-operation.engine.js'
-import { AiNotConfiguredError } from '../ai/ai.errors.js'
-import { readConfiguredCredential } from '../ai/ai.service.js'
+import { validateAiSelection } from '../ai/ai.service.js'
 import {
   MAX_RECENT_ENHANCEMENTS,
   RECENT_ENHANCEMENT_RETENTION_DAYS,
@@ -41,6 +40,7 @@ import type {
   EnhancementSessionRecord,
   ResumeUploadInput,
 } from './enhancement.types.js'
+import type { StartAnalysisInput } from './enhancement.validation.js'
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000
 
@@ -271,14 +271,18 @@ export function discardEnhancementSession(id: string): void {
 
 /**
  * Starts the analysis AI operation for a session (AI_EXECUTION_AND_PROGRESS.md
- * §7 polling contract).
+ * §7 polling contract, ADR-006).
  *
- * Inputs are validated and AI configuration is checked before any operation is
- * created, so an unconfigured or incomplete request is rejected safely without
- * calling a provider (AI_ARCHITECTURE.md §18). The session must hold a resume
- * and a saved job description (RESUME_ENHANCER.md §4).
+ * Inputs are validated and the requested provider/model selection is validated
+ * before any operation is created, so an unconfigured provider or unsupported
+ * model is rejected safely without calling a provider (AI_ARCHITECTURE.md §18).
+ * The session must hold a resume and a saved job description
+ * (RESUME_ENHANCER.md §4).
  */
-export function startEnhancementAnalysis(id: string): { operationId: string } {
+export function startEnhancementAnalysis(
+  id: string,
+  selection: StartAnalysisInput,
+): { operationId: string } {
   const db = getDatabase()
   const record = getEnhancementSessionById(db, id)
   if (!record) {
@@ -291,18 +295,21 @@ export function startEnhancementAnalysis(id: string): { operationId: string } {
   if (!record.jobDescription || record.jobDescription.trim().length === 0) {
     throw new ValidationError('Save a job description before starting the enhancement.')
   }
-  // Fail fast on missing AI configuration: no operation is created and no
-  // provider is contacted. Only presence is checked; the credential value is
-  // never retained here.
-  if (!readConfiguredCredential()) {
-    throw new AiNotConfiguredError()
-  }
+  // Validate provider registration, configuration, model membership, operation
+  // support, and capability before creating the operation. No provider is
+  // contacted here, and the credential value is never retained.
+  const validated = validateAiSelection('analyze_resume', selection)
 
   const started = startAiOperation({
     sessionId: id,
     operation: 'analyze_resume',
     steps: ANALYSIS_STEP_PLAN,
-    runner: createAnalysisRunner({ resume, jobDescription: record.jobDescription }),
+    runner: createAnalysisRunner({
+      resume,
+      jobDescription: record.jobDescription,
+      providerId: validated.providerId,
+      modelId: validated.modelId,
+    }),
   })
   return { operationId: started.operationId }
 }
