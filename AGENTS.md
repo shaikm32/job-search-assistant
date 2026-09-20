@@ -105,15 +105,17 @@ Prefer the smallest coherent implementation that satisfies the specification.
 
 Before modifying an existing area:
 
-1. Read the relevant product specification.
-2. Read the relevant architecture specification.
-3. Inspect the existing implementation.
-4. Identify existing reusable components, services, utilities, and patterns.
-5. Understand dependencies and affected areas.
-6. Then implement the change.
+1. Identify the relevant specification or decision, if one governs the change.
+2. Inspect the existing implementation.
+3. Identify reusable components, services, utilities, and patterns.
+4. Understand dependencies and affected areas.
+5. Then implement the change.
 
-Do not introduce a new pattern when an established project pattern already
-solves the problem appropriately.
+Do not read unrelated product or architecture documentation merely to
+understand the project.
+
+If a documented product or architectural decision governs the requested
+behavior, consult that authoritative source before implementation.
 
 ---
 
@@ -232,6 +234,15 @@ unless it was actually performed.
 
 If a required validation cannot be run, state that clearly.
 
+### Validation Correction Limit
+
+If validation identifies a defect requiring another code correction:
+
+- make the correction and validate again;
+- allow at most two correction cycles for the same task;
+- if validation still fails after the second correction cycle, stop and report
+  the failure rather than continuing to iterate.
+
 ---
 
 ## 11. Git Discipline
@@ -249,6 +260,13 @@ Before completing a task:
 Never reset, revert, delete, or overwrite user changes unless explicitly
 requested.
 
+If completing the requested task requires deleting existing code, removing
+existing functionality, or making a materially breaking change to existing
+behavior, explicitly identify the change and obtain confirmation before
+proceeding.
+
+Do not interpret ordinary replacement or modification of implementation code
+required by the approved task as permission to delete unrelated existing work.
 ---
 
 ## 12. Working Style
@@ -329,8 +347,162 @@ If two active documents appear to conflict:
 Never use documents under `docs/obsolete/` to resolve a conflict.
 
 ---
+## 15. Agent Workflow and Efficiency
 
-## 15. Final Rule
+### Task Boundary
+
+Before using tools:
+
+1. Identify the requested outcome.
+2. Identify the acceptance criteria.
+3. Identify the smallest relevant area of the repository.
+4. Inspect targeted files before expanding scope.
+
+Do not perform broad repository discovery when the relevant paths are already
+known.
+
+### Workflow Selection
+
+The Orchestrator classifies each task and selects the minimum sufficient agent
+workflow rather than running a fixed pipeline. The permitted agents are the
+architect, developer, and reviewer; invoking any of them is conditional.
+
+Classify a task by architectural impact, risk, change scope, reversibility, and
+the value of independent verification, then select the smallest workflow that
+covers that risk. For example:
+
+- documentation or configuration change with no architectural impact:
+  Developer alone;
+- normal implementation change: Developer → Reviewer;
+- architectural, high-risk, or cross-module change:
+  Architect → Developer → Reviewer.
+
+These mappings are illustrative, not a rigid matrix. Escalate or de-escalate as
+evidence emerges. The architect and reviewer are invoked when their role adds
+value, not automatically. Agent role boundaries are unchanged.
+
+### Context Proportionality
+
+Agent invocation and context transfer must be proportional to the task.
+
+- Invoke only the agents whose role adds value for the classified task.
+- Pass each agent only the context required for its role; do not pass the
+  Orchestrator's entire accumulated context or conversation history.
+- Prefer targeted, section-level, or range-based reading over whole-file or
+  whole-repository reads.
+- Do not require an agent to rediscover information already established in
+  .task.md.
+- Do not repeat discovery or validation already performed and recorded in
+  .task.md.
+
+This subsection is the authoritative statement of context proportionality and is
+consistent with `## 16. Bounded Context Discovery`.
+
+### Source-Code and Documentation Discovery
+
+Use the smallest sufficient context.
+
+Prefer:
+
+1. AGENTS.md
+2. targeted source search
+3. relevant source files
+4. relevant tests
+5. documentation or ADRs when a specific decision requires them
+
+Do not read the entire repository or all project documentation simply to
+understand the project.
+
+### Exploration Discipline
+
+Expand repository scope only when:
+
+- a dependency is required to understand the requested change;
+- an implementation contract cannot be established from the current context;
+- a test failure requires additional investigation;
+- or the task explicitly requires broader analysis.
+
+Do not repeatedly inspect unchanged files or rediscover already established
+architecture.
+
+### Tool Efficiency
+
+Batch independent reads/searches when practical.
+
+Avoid:
+
+- repeated identical searches;
+- repeated reads of unchanged files;
+- repository-wide scans for scoped tasks;
+- large unfiltered command output;
+- unnecessary verification cycles;
+- repetitive environment checks;
+- rerunning `git status`, directory listings, or equivalent state checks unless repository state has changed or the result is required for the next action;
+- repeated variations of the same search without new evidence;
+- widening discovery indefinitely when targeted searches cannot establish the required context.
+
+If a targeted text or symbol search returns no useful result, reassess the
+search target before retrying.
+
+If targeted searches cannot establish the required context, use the relevant
+directory structure or explicitly identified documentation, then stop and
+report the missing context rather than widening discovery indefinitely.
+
+Keep progress updates, tool explanations, and error reports concise.
+
+Report only information needed to explain the current state, decision, or
+blocker.
+
+Do not repeatedly restate completed work or previously established context.
+
+Optimize for useful progress and correctness, not merely the smallest number
+of tool calls.
+
+### Tool Failure Handling
+
+If a tool call fails, returns an error, or produces no useful result:
+
+- inspect the error or result before retrying;
+- do not repeat the same call without changing the reason for failure;
+- do not issue multiple speculative variations of the same call;
+- if the required information cannot be obtained with a targeted alternative, stop and report the limitation.
+
+### Scope Control
+
+Do not silently expand the requested scope.
+
+If an unrelated issue is discovered:
+
+- do not implement it automatically;
+- mention it separately in the final report.
+
+### Completion
+
+Stop when:
+
+- the requested acceptance criteria are satisfied;
+- required verification passes;
+- no unresolved issue within the requested scope remains.
+
+Do not continue exploring or refactoring after completion without a reason.
+---
+## 16. Bounded Context Discovery
+
+All repository discovery must remain bounded.
+
+- Do not perform repository-wide discovery.
+- Do not recursively enumerate the repository to discover task context.
+- Do not use repository-wide file, symbol, or text searches against the repository root without a narrowly defined target.
+- Do not read `PROJECT_CONTEXT.md` in full.
+- Start discovery from files, directories, symbols, or requirements explicitly identified by the task.
+- When additional context is required, search the smallest relevant directory or specific document.
+- Do not read large source, generated, or log files in their entirety when targeted line ranges, text search, or symbol-level inspection can establish the required context.
+- For files over 500 lines, prefer targeted inspection unless the task explicitly requires full-file analysis.
+- Do not investigate unrelated subsystems.
+- After sufficient evidence is obtained, stop discovery and perform the task.
+- If the required context cannot be established within a bounded scope, stop and request clarification rather than widening discovery indefinitely.
+
+## 17. Final Rule
 
 **The agent should build what has been decided, not decide what should be
 built.**
