@@ -189,6 +189,25 @@ Do not create duplicate sources of truth.
 
 The goal is for documentation and implementation to remain aligned.
 
+### Milestone Documentation
+
+`docs/IMPLEMENTATION_STATUS.md` is the permanent, high-level implementation
+history, organized by meaningful milestones.
+
+- Every completed milestone must update `docs/IMPLEMENTATION_STATUS.md`.
+- Documentation is part of milestone completion.
+- Record meaningful implementation, architectural/product decisions, and
+  completion/validation status.
+- Keep entries concise and evidence-based.
+- Never invent historical details.
+- Agents must use repository evidence rather than conversation memory.
+- The Orchestrator ensures milestone documentation is included in the
+  completion workflow.
+- The Developer updates it when implementation work completes.
+- The Reviewer verifies it during milestone completion review.
+- Do not invoke additional agents solely for documentation when the current
+  workflow can handle it.
+
 ---
 
 ## 9. Code Quality
