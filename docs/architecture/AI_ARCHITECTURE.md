@@ -279,6 +279,34 @@ These belong in `shared/domain/` and are independent of provider response schema
 ```ts
 type FitMatch = "strong" | "medium" | "weak";
 
+type ResumeSection =
+  | "summary"
+  | "experience"
+  | "skills"
+  | "education"
+  | "projects"
+  | "certifications"
+  | "additional";
+
+interface ResumeContact {
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  location: string | null;
+  links: string[];
+}
+
+interface ResumeSectionContent {
+  section: ResumeSection;
+  heading: string;
+  content: string;
+}
+
+interface Resume {
+  contact: ResumeContact;
+  sections: ResumeSectionContent[]; // ordered as they appear in the resume
+}
+
 interface AnalysisResult {
   atsScore: number; // integer 0..100
   fitMatch: FitMatch;
@@ -297,6 +325,11 @@ interface Gap {
   title: string;
   description: string;
   jdEvidence: string;
+}
+
+interface ProposedChange {
+  description: string;
+  targetContent: string | null;
 }
 
 interface EnhancementSuggestion {
@@ -323,6 +356,10 @@ interface ResumeChange {
   after?: string;
 }
 
+interface ChangeSummary {
+  changes: ResumeChange[];
+}
+
 interface ReanalysisResult {
   atsScore: number;
   fitMatch: FitMatch;
@@ -332,6 +369,13 @@ interface CoverLetter {
   content: string;
 }
 ```
+
+The provider structured-output wrapper for each operation is: Generate
+Suggestions `{ suggestions: EnhancementSuggestion[] }`, Enhance Resume
+`{ resume: Resume, changeSummary: ChangeSummary }`, Re-analyze
+`{ atsScore, fitMatch }`, and Generate Cover Letter `{ content }`. Any section
+value outside `ResumeSection` is unsupported and is rejected during domain
+validation (§8).
 
 ## 8. Validation Pipeline
 

@@ -57,7 +57,7 @@ The backend owns the timeout and must safely handle normal completion, provider 
 
 ## 4. Progress Steps
 
-Initial analysis/suggestion operation:
+Initial analysis/suggestion operation (Analyze Resume, Generate Suggestions):
 
 1. Reading your resume
 2. Understanding the job description
@@ -65,13 +65,16 @@ Initial analysis/suggestion operation:
 4. Identifying improvement opportunities
 5. Preparing your enhancement options
 
-Final enhancement:
+Enhance Resume:
 
 1. Preparing your selected changes
 2. Enhancing your resume
 3. Reviewing the updated resume
-4. Recalculating your match
-5. Preparing your final resume
+
+Re-analyze:
+
+1. Recalculating your match
+2. Preparing your final resume
 
 Cover letter:
 
@@ -80,6 +83,10 @@ Cover letter:
 3. Writing your tailored cover letter
 4. Reviewing the result
 5. Preparing your cover letter
+
+The documented "Final enhancement" plan is split across two independent
+operations (M9-F): Enhance Resume applies the selected changes, and Re-analyze
+recomputes the match on the enhanced resume.
 
 Visible wording can be polished, but the state model is deterministic.
 

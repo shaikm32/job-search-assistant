@@ -153,18 +153,70 @@ Implemented in sub-slices (M9-A through M9-E).
     `m9d-analysis.test.ts`) bundled into this commit.
 - **Validation:** `tests/m9e-providers.test.ts` added; `ai-execution.test.ts`
   extended.
-- **Status:** Complete — **latest completed product milestone**.
+- **Status:** Complete.
+
+### M9-F — Resume Enhancer AI operations
+
+- **Objective:** Implement the remaining Resume Enhancer AI operations —
+  Generate Suggestions, Enhance Resume, Re-analyze, and Generate Cover
+  Letter — end to end.
+- **Implemented:**
+  - Canonical enhancement contracts (`EnhancementSuggestion`,
+    `EnhancementResult`, `Resume`, `ResumeChange`, `ReanalysisResult`,
+    `CoverLetter`, and their sub-contracts) in
+    `shared/domain/ai-enhancement.ts`, exported from the shared domain index;
+    deterministic step plans for the four operations in
+    `shared/domain/ai-operation.ts`.
+  - Backend runners mirroring the analysis pattern
+    (`enhancement.suggestions.ts`, `enhancement.enhance.ts`,
+    `enhancement.reanalysis.ts`, `enhancement.cover-letter.ts`) with a shared
+    canonical resume contract/parser (`enhancement.resume-contract.ts`); a
+    dedicated M9-F operation service
+    (`enhancement.ai-operations.service.ts`); additive routes
+    (`POST /api/enhancements/:id/suggestions|enhance|reanalyze|cover-letter`,
+    202 `{ operationId }`) reusing the generic status route; and shape
+    validators plus a 256 KB start-request bound.
+  - Frontend workflow state machine (`useEnhancementWorkflow.ts`), generic
+    operation options hook, suggestion selection, canonical resume preview,
+    final enhancement/change-summary view, and read-only cover letter view.
+  - `tests/m9f-operations.test.ts` covering the four operations end to end,
+    contract domain validation, prerequisite ordering, selection validation,
+    per-operation provider/model validation, workflow-lock duplicate
+    rejection, safe failure, and non-leakage.
+- **Key decisions:**
+  - The documented "Final enhancement" progress plan is split across two
+    distinct operations: Enhance Resume and Re-analyze.
+  - Stateless canonical-artifact round-trip: the frontend forwards canonical
+    results between phases and the backend re-validates every inbound payload;
+    no persisted AI state and no migration for M9-F.
+  - No suggestions are preselected, and Enhance Resume requires at least one
+    selected suggestion.
+  - Each operation validates its own provider/model selection (no global
+    active provider) and uses the existing five-minute timeout, per-session
+    workflow lock, and duplicate-operation rejection.
+- **Validation:** `tests/m9f-operations.test.ts` added; the M9-A..M9-E suites
+  (`ai-execution.test.ts`, `m9d-analysis.test.ts`, `m9e-providers.test.ts`)
+  remain green. Server and web typechecks, lint, and the production build pass.
+- **Remaining work (deferred, not part of M9-F):** DOCX/PDF generation and
+  download, Application carry-over of the final resume and cover letter,
+  Recent Enhancement revisit UI and persisted artifact retention, and the
+  completed/retention session status transition.
+- **Status:** Complete (M9-F); deferred items remain outstanding.
 
 ---
 
 ## Current state
 
-M9-E is the latest completed product milestone. The Resume Enhancer feature has
-secure multi-provider AI configuration and an operation-time model selection
-with an in-process, polling-based execution engine for resume analysis.
+M9-F is the latest completed Resume Enhancer milestone. The Resume Enhancer
+feature has secure multi-provider AI configuration, operation-time model
+selection, and an in-process, polling-based execution engine covering resume
+analysis, suggestion generation, resume enhancement, re-analysis, and cover
+letter generation.
 
-The next planned milestone is M9-F; its scope is **not** defined in this
-document and must not be assumed.
+Remaining Resume Enhancer work is deferred and separately scoped: DOCX/PDF
+generation and download, Application carry-over, Recent Enhancement revisit and
+persisted artifact retention, and the completed/retention session status
+transition.
 
 ### Post-M9-E developer tooling (not a product milestone)
 

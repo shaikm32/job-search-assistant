@@ -1,25 +1,20 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import type {
-  AiOperationOptions,
-  AiProviderId,
-} from '../../../shared/domain/ai.js'
+import type { AiProviderId } from '../../../shared/domain/ai.js'
 import type { EnhancementSessionStatus } from '../../../shared/domain/enhancement.js'
 import { ApiError } from '../../api/client.js'
 import { useConfirm } from '../../components/common/ConfirmDialog.js'
 import { StatusBadge, type BadgeTone } from '../../components/common/StatusBadge.js'
 import { StatusBanner } from '../../components/common/StatusBanner.js'
 import { Field } from '../../components/common/Field.js'
-import {
-  discardEnhancementSession,
-  startEnhancementAnalysis,
-} from './resumeEnhancerApi.js'
-import { isAiOperationActiveState } from '../../../shared/domain/ai-operation.js'
-import { useAiOperation } from './useAiOperation.js'
-import { useAnalysisOperationOptions } from './useAnalysisOperationOptions.js'
-import { AiOperationProgress } from './AiOperationProgress.js'
+import { discardEnhancementSession } from './resumeEnhancerApi.js'
+import { AiOperationProgress, AnalysisResultView } from './AiOperationProgress.js'
 import './AiOperationProgress.css'
 import { useEnhancementSession } from './useEnhancementSession.js'
+import { useEnhancementWorkflow } from './useEnhancementWorkflow.js'
+import { SuggestionSelection } from './SuggestionSelection.js'
+import { EnhancementResultView } from './EnhancementResultView.js'
+import { CoverLetterView } from './CoverLetterView.js'
 
 function statusTone(status: EnhancementSessionStatus): BadgeTone {
   return status === 'completed' ? 'success' : 'info'
@@ -27,44 +22,6 @@ function statusTone(status: EnhancementSessionStatus): BadgeTone {
 
 function statusLabel(status: EnhancementSessionStatus): string {
   return status === 'completed' ? 'Completed' : 'In progress'
-}
-
-/**
- * Resolves the provider option the user selected, or null when no configured
- * providers are available. Selection state is derived from backend metadata,
- * never from hard-coded model names.
- */
-function findProviderOption(
-  options: AiOperationOptions | null,
-  providerId: AiProviderId | null,
-): AiOperationOptions['providers'][number] | null {
-  if (!options || options.providers.length === 0) {
-    return null
-  }
-  if (providerId) {
-    const selected = options.providers.find((entry) => entry.id === providerId)
-    if (selected) {
-      return selected
-    }
-  }
-  return options.providers[0] ?? null
-}
-
-/**
- * Resolves the model identifier for the selected provider: the user's choice
- * when it belongs to that provider, otherwise the provider's default.
- */
-function resolveModelId(
-  provider: AiOperationOptions['providers'][number] | null,
-  modelId: string | null,
-): string | null {
-  if (!provider || provider.models.length === 0) {
-    return null
-  }
-  if (modelId && provider.models.some((entry) => entry.modelId === modelId)) {
-    return modelId
-  }
-  return provider.defaultModelId ?? provider.models[0]?.modelId ?? null
 }
 
 /** Privacy disclosure required before AI processing (RESUME_ENHANCER.md §16). */
@@ -80,53 +37,40 @@ export function EnhancementSessionPage() {
   const { status, session, error } = useEnhancementSession(sessionId)
   const [actionError, setActionError] = useState<string | null>(null)
   const [discarding, setDiscarding] = useState(false)
-  const [operationId, setOperationId] = useState<string | null>(null)
-  const [starting, setStarting] = useState(false)
   const { confirm, dialog } = useConfirm()
-  const { operation } = useAiOperation(sessionId, operationId)
+  const workflow = useEnhancementWorkflow(sessionId)
   const {
-    status: optionsStatus,
-    options: operationOptions,
-    error: optionsError,
-    reload: reloadOptions,
-  } = useAnalysisOperationOptions()
+    phase,
+    operation,
+    processing,
+    analysisResult,
+    suggestions,
+    selectedIds,
+    enhancementResult,
+    reanalysisResult,
+    coverLetter,
+    optionsStatus,
+    options,
+    optionsError,
+    reloadOptions,
+    providerOption,
+    resolvedProviderId,
+    resolvedModelId,
+    selectProvider,
+    selectModel,
+    starting,
+    startError,
+    toggleSuggestion,
+    startAnalysis,
+    startEnhancement,
+    startCoverLetter,
+    retry,
+  } = workflow
 
-  const [providerId, setProviderId] = useState<AiProviderId | null>(null)
-  const [modelId, setModelId] = useState<string | null>(null)
-
-  const providerOption = findProviderOption(operationOptions, providerId)
-  const selectedModelId = resolveModelId(providerOption, modelId)
-  const resolvedProviderId = providerOption?.id ?? null
-
-  const activeOperation =
-    operation && isAiOperationActiveState(operation.state) ? operation : null
-  // Workflow lock while an AI operation is active (PD-M9-024, ADR-004):
-  // workflow modification is blocked and duplicate starts are rejected by the
-  // backend regardless of UI state.
-  const processing = activeOperation !== null
-
-  const handleSelectProvider = (nextProviderId: AiProviderId) => {
-    // Changing the provider resets the model to that provider's default; the
-    // available model list follows the selected provider (ADR-006).
-    setProviderId(nextProviderId)
-    setModelId(null)
-    setActionError(null)
-  }
+  const displayedError = actionError ?? startError
 
   const handleStartAnalysis = async () => {
     if (!session || !sessionId) {
-      return
-    }
-    if (optionsStatus !== 'ready' || !operationOptions) {
-      setActionError(
-        optionsError ?? 'AI provider options are still loading. Please try again.',
-      )
-      return
-    }
-    if (!resolvedProviderId || !selectedModelId) {
-      setActionError(
-        'Configure an AI provider in Settings before starting the enhancement.',
-      )
       return
     }
     const confirmed = await confirm({
@@ -138,23 +82,7 @@ export function EnhancementSessionPage() {
       return
     }
     setActionError(null)
-    setStarting(true)
-    try {
-      const started = await startEnhancementAnalysis(
-        sessionId,
-        resolvedProviderId,
-        selectedModelId,
-      )
-      setOperationId(started.operationId)
-    } catch (startError) {
-      setActionError(
-        startError instanceof ApiError
-          ? startError.message
-          : 'Something went wrong. Please try again.',
-      )
-    } finally {
-      setStarting(false)
-    }
+    await startAnalysis()
   }
 
   const handleDiscard = async (id: string) => {
@@ -181,6 +109,102 @@ export function EnhancementSessionPage() {
       )
       setDiscarding(false)
     }
+  }
+
+  /** Provider/model selection form, shown wherever an operation can start. */
+  const renderProviderSelector = () => {
+    if (optionsStatus === 'loading') {
+      return <StatusBanner tone="loading">Loading AI providers…</StatusBanner>
+    }
+    if (optionsStatus === 'error' || !options) {
+      return (
+        <div>
+          <StatusBanner tone="error">
+            {optionsError ?? 'Something went wrong. Please try again.'}
+          </StatusBanner>
+          <p>
+            <button
+              className="button button--ghost"
+              type="button"
+              onClick={() => void reloadOptions()}
+            >
+              Try again
+            </button>
+          </p>
+        </div>
+      )
+    }
+    if (options.providers.length === 0) {
+      return (
+        <div>
+          <p className="muted">
+            No AI providers are configured yet. Add a provider and its API key in Settings to
+            continue.
+          </p>
+          <p>
+            <Link className="link" to="/settings">
+              Go to Settings
+            </Link>
+          </p>
+        </div>
+      )
+    }
+    return (
+      <div>
+        <Field id="aiProvider" label="AI Provider">
+          <select
+            id="aiProvider"
+            className="input"
+            value={resolvedProviderId ?? ''}
+            disabled={starting || processing}
+            onChange={(event) => selectProvider(event.target.value as AiProviderId)}
+          >
+            {options.providers.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.displayName}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        {providerOption ? (
+          <Field id="aiModel" label="AI Model">
+            <select
+              id="aiModel"
+              className="input"
+              value={resolvedModelId ?? ''}
+              disabled={starting || processing}
+              onChange={(event) => selectModel(event.target.value)}
+            >
+              {providerOption.models.map((entry) => (
+                <option key={entry.modelId} value={entry.modelId}>
+                  {entry.displayName}
+                </option>
+              ))}
+            </select>
+          </Field>
+        ) : null}
+      </div>
+    )
+  }
+
+  const renderProgress = () => {
+    if (operation) {
+      return <AiOperationProgress operation={operation} onRetry={retry} />
+    }
+    if (starting) {
+      return <StatusBanner tone="loading">Starting AI processing…</StatusBanner>
+    }
+    return (
+      <div>
+        {displayedError ? <StatusBanner tone="error">{displayedError}</StatusBanner> : null}
+        <p>
+          <button className="button button--primary" type="button" onClick={retry}>
+            Try again
+          </button>
+        </p>
+      </div>
+    )
   }
 
   if (status === 'loading') {
@@ -220,14 +244,115 @@ export function EnhancementSessionPage() {
   }
 
   const resume = session.artifacts.find((artifact) => artifact.kind === 'resume') ?? null
-  const readyToAnalyze = resume !== null && session.jobDescription !== null
+  const readyToStart = resume !== null && session.jobDescription !== null
+
+  const renderWorkflow = () => {
+    if (!readyToStart) {
+      return (
+        <section aria-label="AI Enhancement">
+          <h2>AI Enhancement</h2>
+          <p className="muted">{NOT_READY_MESSAGE}</p>
+        </section>
+      )
+    }
+
+    if (phase === 'suggestions' || phase === 'enhance' || phase === 'reanalyze' || phase === 'cover-letter') {
+      return (
+        <section aria-label="AI Enhancement">
+          <h2>AI Enhancement</h2>
+          {renderProgress()}
+        </section>
+      )
+    }
+
+    if (phase === 'selection') {
+      return (
+        <section aria-label="AI Enhancement">
+          <h2>AI Enhancement</h2>
+          {displayedError ? <StatusBanner tone="error">{displayedError}</StatusBanner> : null}
+          {analysisResult ? <AnalysisResultView result={analysisResult} /> : null}
+          {renderProviderSelector()}
+          <SuggestionSelection
+            suggestions={suggestions ?? []}
+            selectedIds={selectedIds}
+            onToggle={toggleSuggestion}
+            onEnhance={() => void startEnhancement()}
+            disabled={processing}
+            starting={starting}
+          />
+        </section>
+      )
+    }
+
+    if (phase === 'final') {
+      return (
+        <section aria-label="AI Enhancement">
+          <h2>AI Enhancement</h2>
+          {displayedError ? <StatusBanner tone="error">{displayedError}</StatusBanner> : null}
+          {enhancementResult ? (
+            <EnhancementResultView
+              enhancementResult={enhancementResult}
+              reanalysisResult={reanalysisResult}
+            />
+          ) : null}
+          {coverLetter ? (
+            <CoverLetterView coverLetter={coverLetter} />
+          ) : (
+            <section aria-label="Generate cover letter">
+              <h2>Cover Letter</h2>
+              <p className="muted">
+                Generate a tailored cover letter from your final resume and this job description.
+              </p>
+              {renderProviderSelector()}
+              <p>
+                <button
+                  className="button button--primary"
+                  type="button"
+                  disabled={starting || processing}
+                  onClick={() => void startCoverLetter()}
+                >
+                  {starting ? 'Starting…' : 'Generate Cover Letter'}
+                </button>
+              </p>
+            </section>
+          )}
+        </section>
+      )
+    }
+
+    // phase === 'analyze'
+    return (
+      <section aria-label="AI Enhancement">
+        <h2>AI Enhancement</h2>
+        {displayedError ? <StatusBanner tone="error">{displayedError}</StatusBanner> : null}
+        {operation ? (
+          <AiOperationProgress operation={operation} onRetry={retry} />
+        ) : (
+          <div>
+            {renderProviderSelector()}
+            {optionsStatus === 'ready' && options && options.providers.length > 0 ? (
+              <p>
+                <button
+                  className="button button--primary"
+                  type="button"
+                  disabled={starting || processing}
+                  onClick={() => void handleStartAnalysis()}
+                >
+                  {starting ? 'Starting…' : 'Analyze Resume'}
+                </button>
+              </p>
+            ) : null}
+          </div>
+        )}
+      </section>
+    )
+  }
 
   return (
     <div className="page">
       <Link className="link back-link" to="/resume-enhancer">
         ← Resume Enhancer
       </Link>
-      {actionError ? <StatusBanner tone="error">{actionError}</StatusBanner> : null}
       {processing ? (
         <StatusBanner tone="loading">
           AI processing is underway. You can safely leave this page — processing continues in the
@@ -256,97 +381,7 @@ export function EnhancementSessionPage() {
         </div>
       </div>
 
-      {operation ? (
-        <AiOperationProgress
-          operation={operation}
-          onRetry={() => void handleStartAnalysis()}
-        />
-      ) : (
-        <section aria-label="AI Enhancement">
-          <h2>AI Enhancement</h2>
-          {!readyToAnalyze ? (
-            <p className="muted">{NOT_READY_MESSAGE}</p>
-          ) : optionsStatus === 'loading' ? (
-            <StatusBanner tone="loading">Loading AI providers…</StatusBanner>
-          ) : optionsStatus === 'error' || !operationOptions ? (
-            <div>
-              <StatusBanner tone="error">
-                {optionsError ?? 'Something went wrong. Please try again.'}
-              </StatusBanner>
-              <p>
-                <button
-                  className="button button--ghost"
-                  type="button"
-                  onClick={() => void reloadOptions()}
-                >
-                  Try again
-                </button>
-              </p>
-            </div>
-          ) : operationOptions.providers.length === 0 ? (
-            <div>
-              <p className="muted">
-                No AI providers are configured yet. Add a provider and its API key in
-                Settings to analyze your resume.
-              </p>
-              <p>
-                <Link className="link" to="/settings">
-                  Go to Settings
-                </Link>
-              </p>
-            </div>
-          ) : (
-            <div>
-              <Field id="aiProvider" label="AI Provider">
-                <select
-                  id="aiProvider"
-                  className="input"
-                  value={resolvedProviderId ?? ''}
-                  disabled={starting || processing}
-                  onChange={(event) =>
-                    handleSelectProvider(event.target.value as AiProviderId)
-                  }
-                >
-                  {operationOptions.providers.map((entry) => (
-                    <option key={entry.id} value={entry.id}>
-                      {entry.displayName}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              {providerOption ? (
-                <Field id="aiModel" label="AI Model">
-                  <select
-                    id="aiModel"
-                    className="input"
-                    value={selectedModelId ?? ''}
-                    disabled={starting || processing}
-                    onChange={(event) => setModelId(event.target.value)}
-                  >
-                    {providerOption.models.map((entry) => (
-                      <option key={entry.modelId} value={entry.modelId}>
-                        {entry.displayName}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              ) : null}
-
-              <p>
-                <button
-                  className="button button--primary"
-                  type="button"
-                  disabled={starting || processing}
-                  onClick={() => void handleStartAnalysis()}
-                >
-                  {starting ? 'Starting…' : 'Analyze Resume'}
-                </button>
-              </p>
-            </div>
-          )}
-        </section>
-      )}
+      {renderWorkflow()}
 
       <section aria-label="Resume">
         <h2>Resume</h2>

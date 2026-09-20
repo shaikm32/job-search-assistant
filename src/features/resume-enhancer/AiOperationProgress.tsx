@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { AiOperationStatus } from '../../../shared/domain/ai-operation.js'
 import {
   isFitMatch,
@@ -28,6 +29,16 @@ const STEP_LABELS: Record<string, string> = {
   analyze_match: 'Analyzing your match',
   identify_opportunities: 'Identifying improvement opportunities',
   prepare_options: 'Preparing your enhancement options',
+  prepare_selected_changes: 'Preparing your selected changes',
+  enhance_resume: 'Enhancing your resume',
+  review_updated_resume: 'Reviewing the updated resume',
+  recalculate_match: 'Recalculating your match',
+  prepare_final_resume: 'Preparing your final resume',
+  review_resume: 'Reviewing your resume',
+  understand_role: 'Understanding the role',
+  write_cover_letter: 'Writing your tailored cover letter',
+  review_result: 'Reviewing the result',
+  prepare_cover_letter: 'Preparing your cover letter',
 }
 
 function stepLabel(stepId: string): string {
@@ -55,7 +66,7 @@ function toAnalysisResult(result: unknown): AnalysisResult | null {
   return isFitMatch(candidate.fitMatch) ? (result as AnalysisResult) : null
 }
 
-function AnalysisResultView({ result }: { result: AnalysisResult }) {
+export function AnalysisResultView({ result }: { result: AnalysisResult }) {
   return (
     <section className="analysis-result" aria-label="Analysis result">
       <div className="analysis-result__score-row">
@@ -129,24 +140,38 @@ function AnalysisResultView({ result }: { result: AnalysisResult }) {
 interface AiOperationProgressProps {
   operation: AiOperationStatus
   onRetry: () => void
+  /**
+   * Optional renderer for the completed result. When omitted, the default
+   * analysis-result view is used, preserving the M9-D behavior.
+   */
+  renderResult?: (operation: AiOperationStatus) => ReactNode
 }
 
-export function AiOperationProgress({ operation, onRetry }: AiOperationProgressProps) {
+export function AiOperationProgress({
+  operation,
+  onRetry,
+  renderResult,
+}: AiOperationProgressProps) {
   const failed = operation.state === 'failed' || operation.state === 'timed_out'
-  const analysisResult =
-    operation.state === 'completed' ? toAnalysisResult(operation.result) : null
+  const completedContent =
+    operation.state === 'completed'
+      ? renderResult
+        ? renderResult(operation)
+        : (() => {
+            const analysisResult = toAnalysisResult(operation.result)
+            return analysisResult ? (
+              <AnalysisResultView result={analysisResult} />
+            ) : (
+              <StatusBanner tone="error">
+                The AI analysis result could not be used. Please try again.
+              </StatusBanner>
+            )
+          })()
+      : null
 
   return (
     <section className="ai-progress" aria-label="AI processing" aria-live="polite">
-      {operation.state === 'completed' ? (
-        analysisResult ? (
-          <AnalysisResultView result={analysisResult} />
-        ) : (
-          <StatusBanner tone="error">
-            The AI analysis result could not be used. Please try again.
-          </StatusBanner>
-        )
-      ) : null}
+      {completedContent}
       {failed ? (
         <div className="ai-progress__failure" role="alert">
           <p className="ai-progress__failure-title">We couldn&apos;t complete the enhancement.</p>

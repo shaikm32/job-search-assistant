@@ -95,3 +95,52 @@ export const ANALYSIS_OPERATION_STEPS = [
 ] as const
 
 export type AnalysisOperationStepId = (typeof ANALYSIS_OPERATION_STEPS)[number]
+
+/**
+ * Named steps of the Generate Suggestions operation
+ * (AI_EXECUTION_AND_PROGRESS.md §4). It reuses the documented
+ * initial analysis/suggestion plan: the analysis supplied with the request is
+ * read, and one AI call prepares the selectable suggestions.
+ */
+export const GENERATE_SUGGESTIONS_OPERATION_STEPS = ANALYSIS_OPERATION_STEPS
+
+export type GenerateSuggestionsOperationStepId = AnalysisOperationStepId
+
+/**
+ * Named steps of the Enhance Resume operation
+ * (AI_EXECUTION_AND_PROGRESS.md §4). The documented "Final enhancement" plan is
+ * split across Enhance Resume and Re-analyze.
+ */
+export const ENHANCEMENT_OPERATION_STEPS = [
+  'prepare_selected_changes',
+  'enhance_resume',
+  'review_updated_resume',
+] as const
+
+export type EnhancementOperationStepId = (typeof ENHANCEMENT_OPERATION_STEPS)[number]
+
+/**
+ * Named steps of the Re-analyze operation
+ * (AI_EXECUTION_AND_PROGRESS.md §4): the remainder of the documented "Final
+ * enhancement" plan.
+ */
+export const REANALYSIS_OPERATION_STEPS = [
+  'recalculate_match',
+  'prepare_final_resume',
+] as const
+
+export type ReanalysisOperationStepId = (typeof REANALYSIS_OPERATION_STEPS)[number]
+
+/**
+ * Named steps of the Generate Cover Letter operation
+ * (AI_EXECUTION_AND_PROGRESS.md §4).
+ */
+export const COVER_LETTER_OPERATION_STEPS = [
+  'review_resume',
+  'understand_role',
+  'write_cover_letter',
+  'review_result',
+  'prepare_cover_letter',
+] as const
+
+export type CoverLetterOperationStepId = (typeof COVER_LETTER_OPERATION_STEPS)[number]

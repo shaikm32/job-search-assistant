@@ -4,12 +4,18 @@ import {
   type EnhancementSession,
 } from '../../../shared/domain/enhancement.js'
 import type {
+  AiOperation,
   AiOperationOptions,
   AiProviderId,
 } from '../../../shared/domain/ai.js'
+import type { AnalysisResult } from '../../../shared/domain/ai-analysis.js'
+import type {
+  EnhancementSuggestion,
+  Resume,
+} from '../../../shared/domain/ai-enhancement.js'
 import type { AiOperationStatus } from '../../../shared/domain/ai-operation.js'
 import { ApiError, apiRequest } from '../../api/client.js'
-import { getAiOperationOptions } from '../settings/settingsApi.js'
+import { getAiOperationOptions as fetchAiOperationOptions } from '../settings/settingsApi.js'
 
 /** Resume input is PDF or DOCX only; DOC is rejected (PD-M9-013). */
 const EXTENSION_MIME_TYPES: Record<string, string> = {
@@ -116,12 +122,82 @@ export function startEnhancementAnalysis(
 
 /**
  * Configured providers and their models for the analysis operation.
- * Re-exported from the settings API client so resume-enhancer feature code
- * selects from safe backend metadata rather than hard-coded model names
- * (AI_ARCHITECTURE.md §15).
  */
 export function getAnalysisOperationOptions(): Promise<AiOperationOptions> {
   return getAiOperationOptions('analyze_resume')
+}
+
+/**
+ * Configured providers and their models for an AI operation
+ * (AI_ARCHITECTURE.md §15). Feature code selects from safe backend metadata
+ * rather than hard-coded model names.
+ */
+export function getAiOperationOptions(operation: AiOperation): Promise<AiOperationOptions> {
+  return fetchAiOperationOptions(operation)
+}
+
+/**
+ * M9-F: starts Generate Suggestions with the canonical analysis the frontend
+ * holds. The backend re-validates the forwarded analysis.
+ */
+export function startEnhancementSuggestions(
+  sessionId: string,
+  providerId: AiProviderId,
+  modelId: string,
+  analysis: AnalysisResult,
+): Promise<{ operationId: string }> {
+  return apiRequest<{ operationId: string }>(
+    `/api/enhancements/${encodeURIComponent(sessionId)}/suggestions`,
+    { method: 'POST', body: { providerId, modelId, analysis } },
+  )
+}
+
+/**
+ * M9-F: starts Enhance Resume with the user-selected suggestions. At least one
+ * suggestion is required; the backend re-validates the selection.
+ */
+export function startResumeEnhancement(
+  sessionId: string,
+  providerId: AiProviderId,
+  modelId: string,
+  suggestions: EnhancementSuggestion[],
+): Promise<{ operationId: string }> {
+  return apiRequest<{ operationId: string }>(
+    `/api/enhancements/${encodeURIComponent(sessionId)}/enhance`,
+    { method: 'POST', body: { providerId, modelId, suggestions } },
+  )
+}
+
+/**
+ * M9-F: starts Re-analyze with the canonical enhanced resume the frontend
+ * holds. The backend re-validates the forwarded resume.
+ */
+export function startEnhancementReanalysis(
+  sessionId: string,
+  providerId: AiProviderId,
+  modelId: string,
+  resume: Resume,
+): Promise<{ operationId: string }> {
+  return apiRequest<{ operationId: string }>(
+    `/api/enhancements/${encodeURIComponent(sessionId)}/reanalyze`,
+    { method: 'POST', body: { providerId, modelId, resume } },
+  )
+}
+
+/**
+ * M9-F: starts Generate Cover Letter with the canonical final resume. The
+ * backend re-validates the forwarded resume.
+ */
+export function startEnhancementCoverLetter(
+  sessionId: string,
+  providerId: AiProviderId,
+  modelId: string,
+  resume: Resume,
+): Promise<{ operationId: string }> {
+  return apiRequest<{ operationId: string }>(
+    `/api/enhancements/${encodeURIComponent(sessionId)}/cover-letter`,
+    { method: 'POST', body: { providerId, modelId, resume } },
+  )
 }
 
 /** Retrieves authoritative backend execution status for one operation. */

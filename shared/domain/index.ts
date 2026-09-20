@@ -1,5 +1,6 @@
 export * from './ai.js'
 export * from './ai-analysis.js'
+export * from './ai-enhancement.js'
 export * from './ai-operation.js'
 export * from './application.js'
 export * from './dashboard.js'

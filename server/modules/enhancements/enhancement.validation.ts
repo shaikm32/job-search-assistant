@@ -10,6 +10,13 @@ import type { ResumeUploadInput } from './enhancement.types.js'
  */
 export const ANALYSIS_START_REQUEST_LIMIT = 4 * 1024
 
+/**
+ * Maximum request size for starting an M9-F AI operation. These requests carry
+ * a canonical artifact forward (analysis, selected suggestions, or the enhanced
+ * resume), so the bound is larger than the analysis start but still defensive.
+ */
+export const AI_OPERATION_START_REQUEST_LIMIT = 256 * 1024
+
 /** Defensive bound so a malformed model identifier cannot allocate memory. */
 const MAX_MODEL_ID_LENGTH = 200
 
@@ -98,14 +105,11 @@ export interface StartAnalysisInput {
 }
 
 /**
- * Shape-only validation of the analysis start request. Provider registration,
+ * Shape-only validation of a provider/model selection. Provider registration,
  * configuration, model membership, and capability checks belong to the AI
  * service, which is the single authority for them (ADR-006).
  */
-export function validateStartAnalysis(body: unknown): StartAnalysisInput {
-  if (!isRecord(body)) {
-    throw new ValidationError('Select an AI provider and model.')
-  }
+function parseSelection(body: Record<string, unknown>): StartAnalysisInput {
   if (!isAiProviderId(body.providerId)) {
     throw new ValidationError('Select a supported AI provider.')
   }
@@ -124,4 +128,89 @@ export function validateStartAnalysis(body: unknown): StartAnalysisInput {
     throw new ValidationError('Select a supported AI model.')
   }
   return { providerId, modelId }
+}
+
+/**
+ * Shape-only validation of the analysis start request. Provider registration,
+ * configuration, model membership, and capability checks belong to the AI
+ * service, which is the single authority for them (ADR-006).
+ */
+export function validateStartAnalysis(body: unknown): StartAnalysisInput {
+  if (!isRecord(body)) {
+    throw new ValidationError('Select an AI provider and model.')
+  }
+  return parseSelection(body)
+}
+
+/**
+ * Shape-only validation for starting Generate Suggestions. The canonical
+ * analysis is forwarded by the frontend and re-validated by the service.
+ */
+export interface StartSuggestionsInput extends StartAnalysisInput {
+  analysis: unknown
+}
+
+export function validateStartSuggestions(body: unknown): StartSuggestionsInput {
+  if (!isRecord(body)) {
+    throw new ValidationError('Select an AI provider and model.')
+  }
+  const selection = parseSelection(body)
+  if (!isRecord(body.analysis)) {
+    throw new ValidationError(
+      'Analysis must be completed before generating enhancement suggestions.',
+    )
+  }
+  return { ...selection, analysis: body.analysis }
+}
+
+/**
+ * Shape-only validation for starting Enhance Resume. The selected suggestions
+ * are forwarded by the frontend and re-validated by the service; at least one
+ * selection is required (M9-F decision 5, PD-M9-004).
+ */
+export interface StartEnhanceResumeInput extends StartAnalysisInput {
+  suggestions: unknown[]
+}
+
+export function validateStartEnhanceResume(body: unknown): StartEnhanceResumeInput {
+  if (!isRecord(body)) {
+    throw new ValidationError('Select an AI provider and model.')
+  }
+  const selection = parseSelection(body)
+  if (!Array.isArray(body.suggestions) || body.suggestions.length === 0) {
+    throw new ValidationError('Select at least one suggestion to enhance your resume.')
+  }
+  return { ...selection, suggestions: body.suggestions }
+}
+
+/** Shape-only validation for starting Re-analyze with the enhanced resume. */
+export interface StartReanalysisInput extends StartAnalysisInput {
+  resume: unknown
+}
+
+export function validateStartReanalysis(body: unknown): StartReanalysisInput {
+  if (!isRecord(body)) {
+    throw new ValidationError('Select an AI provider and model.')
+  }
+  const selection = parseSelection(body)
+  if (!isRecord(body.resume)) {
+    throw new ValidationError('The enhanced resume is required before re-analyzing.')
+  }
+  return { ...selection, resume: body.resume }
+}
+
+/** Shape-only validation for starting Generate Cover Letter. */
+export interface StartCoverLetterInput extends StartAnalysisInput {
+  resume: unknown
+}
+
+export function validateStartCoverLetter(body: unknown): StartCoverLetterInput {
+  if (!isRecord(body)) {
+    throw new ValidationError('Select an AI provider and model.')
+  }
+  const selection = parseSelection(body)
+  if (!isRecord(body.resume)) {
+    throw new ValidationError('The final resume is required before generating a cover letter.')
+  }
+  return { ...selection, resume: body.resume }
 }

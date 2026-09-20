@@ -11,11 +11,22 @@ import {
   startEnhancementAnalysis,
 } from './enhancement.service.js'
 import {
+  startEnhancementCoverLetter,
+  startEnhancementReanalysis,
+  startEnhancementSuggestions,
+  startResumeEnhancement,
+} from './enhancement.ai-operations.service.js'
+import {
   ANALYSIS_START_REQUEST_LIMIT,
+  AI_OPERATION_START_REQUEST_LIMIT,
   RESUME_UPLOAD_REQUEST_LIMIT,
   validateResumeUpload,
   validateSaveJobDescription,
   validateStartAnalysis,
+  validateStartCoverLetter,
+  validateStartEnhanceResume,
+  validateStartReanalysis,
+  validateStartSuggestions,
 } from './enhancement.validation.js'
 
 export async function handleEnhancementRoutes(
@@ -63,6 +74,38 @@ export async function handleEnhancementRoutes(
       await readJsonBody(request, ANALYSIS_START_REQUEST_LIMIT),
     )
     sendJson(response, 202, startEnhancementAnalysis(id, input))
+    return true
+  }
+  if (rest.length === 2 && rest[1] === 'suggestions' && request.method === 'POST') {
+    // M9-F: generate selectable suggestions from the canonical analysis.
+    const input = validateStartSuggestions(
+      await readJsonBody(request, AI_OPERATION_START_REQUEST_LIMIT),
+    )
+    sendJson(response, 202, startEnhancementSuggestions(id, input))
+    return true
+  }
+  if (rest.length === 2 && rest[1] === 'enhance' && request.method === 'POST') {
+    // M9-F: apply the user-selected suggestions to produce the enhanced resume.
+    const input = validateStartEnhanceResume(
+      await readJsonBody(request, AI_OPERATION_START_REQUEST_LIMIT),
+    )
+    sendJson(response, 202, startResumeEnhancement(id, input))
+    return true
+  }
+  if (rest.length === 2 && rest[1] === 'reanalyze' && request.method === 'POST') {
+    // M9-F: re-analyze the canonical enhanced resume against the same JD.
+    const input = validateStartReanalysis(
+      await readJsonBody(request, AI_OPERATION_START_REQUEST_LIMIT),
+    )
+    sendJson(response, 202, startEnhancementReanalysis(id, input))
+    return true
+  }
+  if (rest.length === 2 && rest[1] === 'cover-letter' && request.method === 'POST') {
+    // M9-F: generate a read-only, grounded cover letter from the final resume.
+    const input = validateStartCoverLetter(
+      await readJsonBody(request, AI_OPERATION_START_REQUEST_LIMIT),
+    )
+    sendJson(response, 202, startEnhancementCoverLetter(id, input))
     return true
   }
   if (rest.length === 3 && rest[1] === 'operations' && request.method === 'GET') {
