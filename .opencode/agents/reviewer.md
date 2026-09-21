@@ -86,9 +86,17 @@ The full test suite may be run when justified; it is not the default.
 
 OUTPUT
 
-For every actionable defect, report:
+Return exactly these sections:
 
-### Finding
+- STATUS: review outcome.
+- FINDINGS: one entry per actionable defect.
+- SEVERITY: blocker / major / minor for each finding.
+- FILES: the file (and location) for each finding.
+- VERIFICATION: validation performed and whether it was sufficient.
+- REQUIRED_ACTIONS: the required correction for each finding.
+- NEXT ACTION: the concrete next step.
+
+Every FINDING must specify:
 - Severity: blocker / major / minor
 - File
 - Location
@@ -98,8 +106,9 @@ For every actionable defect, report:
 Do not report speculative issues.
 
 If no actionable defect is found, return exactly:
-
 Review passed — no actionable defects found.
+
+Do not reproduce the implementation, full tool output, or a chronological review narrative.
 
 ### TASK MEMORY OWNERSHIP
 
@@ -113,3 +122,7 @@ Do not modify any other .task.md section.
 Replace stale findings/state rather than appending review history.
 Do not add reasoning, transcripts, tool output, or source-code contents.
 If information belongs to another section, report it to the Orchestrator.
+
+Treat conversation history as working memory, not durable storage. Put durable
+task state, decisions, requirements, and important findings in the appropriate
+repository artifact.

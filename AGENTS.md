@@ -2,564 +2,236 @@
 
 ## Purpose
 
-This file defines the operating rules for AI coding agents working on the
-Job Search Assistant repository.
-
-It defines **how an agent should work**. It does not duplicate the detailed
-product or architecture specifications.
+Operating rules for AI coding agents on the Job Search Assistant repo: **how** an agent
+works, not detailed product/architecture specifications.
 
 ---
 
 ## 1. Documentation Is the Source of Truth
 
-Before implementing or changing functionality, consult the relevant
-documentation.
+Consult the relevant documentation before implementing or changing functionality.
+Product behavior is defined in `docs/product/` (`PRODUCT_VISION.md`,
+`PRODUCT_PRINCIPLES.md`, `decisions/PRODUCT_DECISIONS.md`, `features/`); technical
+constraints in `docs/architecture/` (documents and ADRs).
 
-### Product
-
-Product requirements, workflows, UI/UX behavior, feature scope, and product
-decisions are defined under:
-
-`docs/product/`
-
-Use:
-
-- `docs/product/PRODUCT_VISION.md` — overall product vision
-- `docs/product/PRODUCT_PRINCIPLES.md` — product principles
-- `docs/product/decisions/PRODUCT_DECISIONS.md` — approved product decisions
-- `docs/product/features/` — feature-specific product specifications
-
-### Architecture
-
-Technical architecture and implementation constraints are defined under:
-
-`docs/architecture/`
-
-Use the relevant architecture documents and ADRs before making architectural
-changes.
-
-### Priority
-
-When information is distributed across documents:
-
-1. The relevant approved product decision takes precedence for product behavior.
-2. The relevant feature specification defines feature-specific behavior.
-3. Architecture specifications define technical implementation constraints.
-4. ADRs define explicit architectural decisions.
-5. Existing code is evidence of the current implementation, but does not
-   override an approved documented decision.
-
-If documentation and implementation disagree, do not silently preserve the
-old implementation when implementing an approved change.
+**Priority** when information is distributed: (1) approved product decision for product
+behavior; (2) feature specification for feature behavior; (3) architecture specification
+for technical constraints; (4) ADR for explicit architectural decisions; (5) existing
+code is evidence of current implementation but does not override an approved documented
+decision. If documentation and implementation disagree, do not silently preserve the old
+implementation when implementing an approved change.
 
 ---
 
 ## 2. Obsolete Documentation
 
-Historical documents are stored under:
-
-`docs/obsolete/`
-
-AI agents **MUST NOT** use files under `docs/obsolete/` as product
-requirements, architectural guidance, implementation instructions, or
-decision authority.
-
-These files exist only for historical reference.
+AI agents **MUST NOT** use files under `docs/obsolete/` as product requirements,
+architectural guidance, implementation instructions, or decision authority; they exist
+only for historical reference.
 
 ---
 
 ## 3. Do Not Invent Product Decisions
 
-Do not invent requirements, workflows, UI behavior, business rules, or
-product decisions when the specification does not define them.
-
-If the required behavior is already documented, follow it.
-
-If a genuinely important product decision is missing or ambiguous:
-
-- identify the ambiguity clearly;
-- do not silently make a product decision;
-- ask for clarification when the decision materially affects the product.
-
-Minor implementation details may be chosen using established project
-patterns without asking for clarification.
+Do not invent requirements, workflows, UI behavior, business rules, or product decisions
+the specification does not define; if behavior is documented, follow it. If a genuinely
+important product decision is missing or ambiguous: identify the ambiguity; do not
+silently make a product decision; ask for clarification when it materially affects the
+product. Minor implementation details may use established project patterns without
+asking.
 
 ---
 
 ## 4. Do Not Expand Scope Silently
 
-Implement the requested scope and avoid unrelated changes.
-
-If you discover additional improvements, bugs, refactoring opportunities, or
-future enhancements:
-
-- do not implement them automatically;
-- identify them separately;
-- allow the product/technical owner to decide whether they belong in scope.
-
+Implement the requested scope and avoid unrelated changes. If you discover additional
+improvements, bugs, refactoring opportunities, or future enhancements: do not implement
+them automatically; identify them separately; let the product/technical owner decide.
 Prefer the smallest coherent implementation that satisfies the specification.
-
----
-
-## 5. Understand Existing Code Before Changing It
-
-Before modifying an existing area:
-
-1. Identify the relevant specification or decision, if one governs the change.
-2. Inspect the existing implementation.
-3. Identify reusable components, services, utilities, and patterns.
-4. Understand dependencies and affected areas.
-5. Then implement the change.
-
-Do not read unrelated product or architecture documentation merely to
-understand the project.
-
-If a documented product or architectural decision governs the requested
-behavior, consult that authoritative source before implementation.
 
 ---
 
 ## 6. Architecture Discipline
 
-The project follows the architecture documented under:
-
-`docs/architecture/`
-
-Respect existing architectural boundaries and conventions.
-
-In particular:
-
-- keep frontend and backend responsibilities separated;
-- keep API contracts explicit and type-safe;
-- keep domain contracts centralized where the architecture specifies;
-- preserve the existing modular structure;
-- reuse shared infrastructure where appropriate;
-- do not introduce unnecessary architectural complexity;
-- do not introduce a new dependency or infrastructure component without
-  justification.
-
-Significant architectural decisions must be documented in an ADR under:
-
-`docs/architecture/ADRs/`
+Follow the architecture in `docs/architecture/` and respect existing boundaries and
+conventions: separate frontend and backend responsibilities; keep API contracts explicit
+and type-safe; keep domain contracts centralized where specified; preserve the existing
+modular structure; reuse shared infrastructure where appropriate; do not add unnecessary
+architectural complexity; do not introduce a new dependency or infrastructure component
+without justification. Significant architectural decisions must be documented in an ADR
+under `docs/architecture/ADRs/`.
 
 ---
 
 ## 7. Security and Privacy
 
-Treat user data as sensitive.
-
-This includes, but is not limited to:
-
-- resumes;
-- job descriptions;
-- cover letters;
-- generated documents;
-- application information;
-- API keys;
-- AI-provider configuration;
-- stored files.
-
-Follow:
-
-`docs/architecture/SECURITY.md`
-
-For AI-related functionality, also follow:
-
-`docs/architecture/AI_ARCHITECTURE.md`
-
-Never expose API keys, secrets, credentials, filesystem paths, or other
-sensitive implementation details to the frontend unless explicitly required
-and documented.
-
-AI provider API calls must follow the documented backend architecture.
+Treat user data as sensitive: resumes, job descriptions, cover letters, generated
+documents, application information, API keys, AI-provider configuration, and stored
+files. Follow `docs/architecture/SECURITY.md`; for AI functionality also follow
+`docs/architecture/AI_ARCHITECTURE.md`. Never expose API keys, secrets, credentials,
+filesystem paths, or other sensitive implementation details to the frontend unless
+explicitly required and documented. AI provider API calls must follow the documented
+backend architecture.
 
 ---
 
 ## 8. Documentation Must Evolve With Approved Decisions
 
-When implementing an approved product or architectural decision:
-
-- keep the relevant documentation consistent with the implementation;
-- update the appropriate product specification when product behavior changes;
-- update the appropriate architecture specification when technical design
-  changes;
-- create or update an ADR when a significant architectural decision is made.
-
-Do not create duplicate sources of truth.
-
-The goal is for documentation and implementation to remain aligned.
+When implementing an approved product or architectural decision: keep relevant
+documentation consistent; update the product specification when product behavior
+changes; update the architecture specification when technical design changes; create or
+update an ADR for a significant architectural decision. Do not create duplicate sources
+of truth.
 
 ### Milestone Documentation
 
-`docs/IMPLEMENTATION_STATUS.md` is the permanent, high-level implementation
-history, organized by meaningful milestones.
-
-- Every completed milestone must update `docs/IMPLEMENTATION_STATUS.md`.
-- Documentation is part of milestone completion.
-- Record meaningful implementation, architectural/product decisions, and
-  completion/validation status.
-- Keep entries concise and evidence-based.
-- Never invent historical details.
-- Agents must use repository evidence rather than conversation memory.
-- The Orchestrator ensures milestone documentation is included in the
-  completion workflow.
-- The Developer updates it when implementation work completes.
-- The Reviewer verifies it during milestone completion review.
-- Do not invoke additional agents solely for documentation when the current
-  workflow can handle it.
+`docs/IMPLEMENTATION_STATUS.md` is the permanent milestone history; every completed
+milestone must update it, since documentation is part of milestone completion. Record
+meaningful implementation, decisions, and completion/validation status concisely and
+evidence-based; never invent historical details and use repository evidence, not
+conversation memory. The Orchestrator includes milestone documentation in the completion
+workflow; the Developer updates it when implementation completes; the Reviewer verifies
+it during milestone review. Do not invoke additional agents solely for documentation.
 
 ---
 
 ## 9. Code Quality
 
-Follow the existing coding conventions and project structure.
-
-Prefer:
-
-- simple and readable code;
-- small, focused modules;
-- explicit types;
-- clear API contracts;
-- predictable error handling;
-- reusable components;
-- minimal duplication;
-- maintainable abstractions.
-
-Avoid:
-
-- unnecessary abstractions;
-- premature optimization;
-- speculative infrastructure;
-- dead code;
-- unrelated refactoring;
-- silently changing established behavior.
+Follow existing coding conventions and project structure. Prefer simple, readable code;
+small, focused modules; explicit types; clear API contracts; predictable error handling;
+reusable components; minimal duplication; maintainable abstractions. Avoid unnecessary
+abstractions, premature optimization, speculative infrastructure, dead code, unrelated
+refactoring, and silently changing established behavior.
 
 ---
 
 ## 10. Validation
 
-After making changes, run the appropriate validation available in the
-repository.
-
-At minimum, when applicable:
-
-- TypeScript type checking;
-- linting;
-- relevant automated tests;
-- manual verification for UI or workflow behavior.
-
-Do not claim that a check, test, build, or manual verification was performed
-unless it was actually performed.
-
-If a required validation cannot be run, state that clearly.
+After changes, run the appropriate repository validation; at minimum, when applicable:
+TypeScript type checking; linting; relevant automated tests; manual verification for UI
+or workflow behavior. Do not claim validation was performed unless it was; if required
+validation cannot be run, state that clearly.
 
 ### Scope- and Risk-Aware Validation
 
-Validation must be proportional to the change, not a fixed full-suite ritual.
+Validation must be proportional to the change, not a fixed full-suite ritual. Identify
+the changed files/components, the behavior they could affect, and existing checks
+covering it; select the smallest set giving reasonable confidence. "Minimum sufficient
+validation" does not mean "run fewer tests regardless of risk": correctness takes
+priority, and validation expands when regression risk extends beyond the affected area.
 
-Before running validation, identify the changed files or components, the
-behavior those changes could affect, and the existing checks that cover that
-behavior; then select the smallest validation set that gives reasonable
-confidence in the change.
-
-"Minimum sufficient validation" does not mean "run fewer tests regardless of
-risk." Correctness takes priority over runtime. Expand validation whenever
-meaningful regression risk extends beyond the directly affected area.
-
-Typical validation depth by change:
-
-- documentation-only or configuration-only: no product test suite is normally
-  required; verify the edited document or configuration is well-formed and
-  consistent with the surrounding content;
-- UI-only: relevant UI/component tests and, where behavior or workflow is
-  affected, manual verification of the affected flow;
-- isolated backend change: the tests and type checks covering the changed
-  module and its direct contracts;
-- AI/provider change: the tests covering the provider integration plus
-  validation of prompt, request, response, error, and fallback handling;
-- database or schema change: migration and persistence tests, including
-  upgrade/rollback or data-compatibility checks where applicable;
-- cross-module change: tests for every affected module and their integration
-  boundaries;
-- major architectural or otherwise high-risk change: the broadest relevant
-  regression set, including the full suite when justified.
-
-Running the full suite is permitted when the change justifies it; it is not
-the default.
+Typical depth ranges from verifying a doc/config artifact is well-formed, through
+UI/component tests with manual flow verification, isolated-module tests and type checks,
+provider-integration tests covering prompt/request/response/error/fallback, and
+migration/persistence tests with upgrade/rollback checks, up to the broadest relevant
+regression set (full suite when justified; not the default).
 
 ### Validation Correction Limit
 
-If validation identifies a defect requiring another code correction:
-
-- make the correction and validate again;
-- allow at most two correction cycles for the same task;
-- if validation still fails after the second correction cycle, stop and report
-  the failure rather than continuing to iterate.
+If validation identifies a defect requiring another code correction: make the correction
+and validate again; allow at most two correction cycles for the same task; if validation
+still fails after the second correction cycle, stop and report the failure rather than
+continuing to iterate.
 
 ---
 
 ## 11. Git Discipline
 
-Keep changes focused and reviewable.
+Keep changes focused and reviewable. Before completing a task: inspect `git status`;
+inspect the resulting diff; ensure unrelated files were not modified; ensure generated or
+temporary files are not accidentally committed; do not rewrite or discard the user's
+existing work. Never reset, revert, delete, or overwrite user changes unless explicitly
+requested. If the task requires deleting existing code, removing functionality, or a
+materially breaking change, identify it and obtain confirmation first; do not treat
+ordinary replacement required by the approved task as permission to delete unrelated
+work.
 
-Before completing a task:
-
-- inspect `git status`;
-- inspect the resulting diff;
-- ensure unrelated files were not modified;
-- ensure generated files or temporary files are not accidentally committed;
-- do not rewrite or discard the user's existing work.
-
-Never reset, revert, delete, or overwrite user changes unless explicitly
-requested.
-
-If completing the requested task requires deleting existing code, removing
-existing functionality, or making a materially breaking change to existing
-behavior, explicitly identify the change and obtain confirmation before
-proceeding.
-
-Do not interpret ordinary replacement or modification of implementation code
-required by the approved task as permission to delete unrelated existing work.
 ---
 
 ## 12. Working Style
 
-Work incrementally.
-
-For implementation tasks:
-
-1. Understand the requested change.
-2. Verify the relevant specification.
-3. Inspect the current implementation.
-4. Make the smallest appropriate change.
-5. Validate it.
-6. Review the diff.
-7. Report what changed and what was verified.
-
-When a task is naturally divisible into independent steps, complete and verify
-the current step before moving to the next one.
-
-Do not make large speculative changes based on assumptions.
+Work incrementally. For implementation tasks: (1) understand the requested change;
+(2) verify the relevant specification; (3) inspect the current implementation and
+identify reusable components, services, utilities, and patterns; (4) understand
+dependencies and affected areas; (5) make the smallest appropriate change; (6) validate
+it, review the diff, and report what changed and what was verified. Do not read unrelated
+documentation to understand the project; if a documented decision governs the requested
+behavior, consult that authoritative source before implementation. When a task is
+divisible into independent steps, complete and verify the current step before the next,
+and do not make large speculative changes based on assumptions.
 
 ---
 
 ## 13. Product vs. Technical Decisions
 
-Keep responsibilities separate.
-
-### Product decisions
-
-Questions about:
-
-- user experience;
-- workflows;
-- feature behavior;
-- business rules;
-- user-facing copy;
-- feature scope;
-- prioritization;
-
-belong in `docs/product/`.
-
-### Technical decisions
-
-Questions about:
-
-- architecture;
-- APIs;
-- database design;
-- storage;
-- infrastructure;
-- dependencies;
-- security implementation;
-- performance;
-- scalability;
-
-belong in `docs/architecture/`.
-
-Do not move a product decision into technical documentation merely because it
-is easier to implement that way.
-
-Do not make a technical implementation decision that changes product behavior
-without documenting or confirming the corresponding product decision.
+Keep responsibilities separate. **Product decisions** (user experience, workflows,
+feature behavior, business rules, user-facing copy, feature scope, prioritization)
+belong in `docs/product/`; **technical decisions** (architecture, APIs, database design,
+storage, infrastructure, dependencies, security implementation, performance,
+scalability) belong in `docs/architecture/`. Do not move a product decision into
+technical documentation merely because it is easier to implement that way. Do not make a
+technical implementation decision that changes product behavior without documenting or
+confirming the corresponding product decision.
 
 ---
 
 ## 14. When Specifications Conflict
 
-If two active documents appear to conflict:
-
-1. Identify the conflict.
-2. Determine whether an approved product decision resolves it.
-3. Check the relevant feature and architecture specifications.
-4. Do not silently choose a behavior that materially changes the product.
-5. Ask for clarification when necessary.
-6. Once resolved, update the appropriate documentation so the conflict does
-   not remain.
-
-Never use documents under `docs/obsolete/` to resolve a conflict.
+If two active documents appear to conflict: (1) identify the conflict; (2) determine
+whether an approved product decision resolves it; (3) check the relevant feature and
+architecture specifications; (4) do not silently choose a behavior that materially
+changes the product; (5) ask for clarification when necessary; (6) once resolved, update
+the appropriate documentation so the conflict does not remain. Never use documents under
+`docs/obsolete/` to resolve a conflict.
 
 ---
+
 ## 15. Agent Workflow and Efficiency
 
-### Task Boundary
+**Workflow Selection.** Task classification, minimum-sufficient workflow selection, and
+conditional invocation of the architect, developer, and reviewer are
+orchestrator-specific (`.opencode/agents/orchestrator.md` §2). Subagents must not invoke
+other agents.
 
-Before using tools:
+**Context Proportionality.** Use only the context required for the current role; prefer
+targeted, section-level, or range-based reading over whole-file/repository reads; do not
+rediscover or repeat discovery/validation already established in .task.md. Handoff
+context transfer is orchestrator-specific (`.opencode/agents/orchestrator.md` §§2–3).
 
-1. Identify the requested outcome.
-2. Identify the acceptance criteria.
-3. Identify the smallest relevant area of the repository.
-4. Inspect targeted files before expanding scope.
+**Scope Control.** Do not silently expand the requested scope. If an unrelated issue is
+discovered, do not implement it automatically; mention it separately in the final
+report.
 
-Do not perform broad repository discovery when the relevant paths are already
-known.
+**Completion.** Stop when the requested acceptance criteria are satisfied, required
+verification passes, and no unresolved issue within scope remains. Do not continue
+exploring or refactoring after completion without a reason.
 
-### Workflow Selection
+> **Procedural detail:** expanded source/document discovery, exploration, tool-efficiency,
+> tool-failure, and bounded-discovery procedures live in the `bounded-discovery` skill.
 
-The Orchestrator classifies each task and selects the minimum sufficient agent
-workflow rather than running a fixed pipeline. The permitted agents are the
-architect, developer, and reviewer; invoking any of them is conditional.
-
-Classify a task by architectural impact, risk, change scope, reversibility, and
-the value of independent verification, then select the smallest workflow that
-covers that risk. For example:
-
-- documentation or configuration change with no architectural impact:
-  Developer alone;
-- normal implementation change: Developer → Reviewer;
-- architectural, high-risk, or cross-module change:
-  Architect → Developer → Reviewer.
-
-These mappings are illustrative, not a rigid matrix. Escalate or de-escalate as
-evidence emerges. The architect and reviewer are invoked when their role adds
-value, not automatically. Agent role boundaries are unchanged.
-
-### Context Proportionality
-
-Agent invocation and context transfer must be proportional to the task.
-
-- Invoke only the agents whose role adds value for the classified task.
-- Pass each agent only the context required for its role; do not pass the
-  Orchestrator's entire accumulated context or conversation history.
-- Prefer targeted, section-level, or range-based reading over whole-file or
-  whole-repository reads.
-- Do not require an agent to rediscover information already established in
-  .task.md.
-- Do not repeat discovery or validation already performed and recorded in
-  .task.md.
-
-This subsection is the authoritative statement of context proportionality and is
-consistent with `## 16. Bounded Context Discovery`.
-
-### Source-Code and Documentation Discovery
-
-Use the smallest sufficient context.
-
-Prefer:
-
-1. AGENTS.md
-2. targeted source search
-3. relevant source files
-4. relevant tests
-5. documentation or ADRs when a specific decision requires them
-
-Do not read the entire repository or all project documentation simply to
-understand the project.
-
-### Exploration Discipline
-
-Expand repository scope only when:
-
-- a dependency is required to understand the requested change;
-- an implementation contract cannot be established from the current context;
-- a test failure requires additional investigation;
-- or the task explicitly requires broader analysis.
-
-Do not repeatedly inspect unchanged files or rediscover already established
-architecture.
-
-### Tool Efficiency
-
-Batch independent reads/searches when practical.
-
-Avoid:
-
-- repeated identical searches;
-- repeated reads of unchanged files;
-- repository-wide scans for scoped tasks;
-- large unfiltered command output;
-- unnecessary verification cycles;
-- repetitive environment checks;
-- rerunning `git status`, directory listings, or equivalent state checks unless repository state has changed or the result is required for the next action;
-- repeated variations of the same search without new evidence;
-- widening discovery indefinitely when targeted searches cannot establish the required context.
-
-If a targeted text or symbol search returns no useful result, reassess the
-search target before retrying.
-
-If targeted searches cannot establish the required context, use the relevant
-directory structure or explicitly identified documentation, then stop and
-report the missing context rather than widening discovery indefinitely.
-
-Keep progress updates, tool explanations, and error reports concise.
-
-Report only information needed to explain the current state, decision, or
-blocker.
-
-Do not repeatedly restate completed work or previously established context.
-
-Optimize for useful progress and correctness, not merely the smallest number
-of tool calls.
-
-### Tool Failure Handling
-
-If a tool call fails, returns an error, or produces no useful result:
-
-- inspect the error or result before retrying;
-- do not repeat the same call without changing the reason for failure;
-- do not issue multiple speculative variations of the same call;
-- if the required information cannot be obtained with a targeted alternative, stop and report the limitation.
-
-### Scope Control
-
-Do not silently expand the requested scope.
-
-If an unrelated issue is discovered:
-
-- do not implement it automatically;
-- mention it separately in the final report.
-
-### Completion
-
-Stop when:
-
-- the requested acceptance criteria are satisfied;
-- required verification passes;
-- no unresolved issue within the requested scope remains.
-
-Do not continue exploring or refactoring after completion without a reason.
 ---
+
 ## 16. Bounded Context Discovery
 
-All repository discovery must remain bounded.
+All repository discovery must remain bounded: do not perform repository-wide discovery;
+do not recursively enumerate the repository; do not use repository-wide file, symbol, or
+text searches against the repository root without a narrowly defined target; do not read
+`PROJECT_CONTEXT.md` in full; do not read large source, generated, or log files in full
+when targeted line ranges, text search, or symbol inspection suffice; for files over 500
+lines prefer targeted inspection; do not investigate unrelated subsystems; start from
+files, directories, symbols, or requirements the task explicitly identifies, and search
+only the smallest relevant directory or specific document when more context is required.
 
-- Do not perform repository-wide discovery.
-- Do not recursively enumerate the repository to discover task context.
-- Do not use repository-wide file, symbol, or text searches against the repository root without a narrowly defined target.
-- Do not read `PROJECT_CONTEXT.md` in full.
-- Start discovery from files, directories, symbols, or requirements explicitly identified by the task.
-- When additional context is required, search the smallest relevant directory or specific document.
-- Do not read large source, generated, or log files in their entirety when targeted line ranges, text search, or symbol-level inspection can establish the required context.
-- For files over 500 lines, prefer targeted inspection unless the task explicitly requires full-file analysis.
-- Do not investigate unrelated subsystems.
-- After sufficient evidence is obtained, stop discovery and perform the task.
-- If the required context cannot be established within a bounded scope, stop and request clarification rather than widening discovery indefinitely.
+After sufficient evidence, stop discovery and perform the task. If context cannot be
+established within a bounded scope, stop and request clarification rather than widening
+discovery. See the `bounded-discovery` skill for the expanded procedure.
+
+---
 
 ## 17. Final Rule
 
-**The agent should build what has been decided, not decide what should be
-built.**
+**The agent should build what has been decided, not decide what should be built.**
 
-Use the repository documentation as the source of truth, preserve existing
-architecture and conventions, make focused changes, validate the result, and
-keep the documentation aligned with the implementation.
+Use the repository documentation as the source of truth, preserve existing architecture
+and conventions, make focused changes, validate the result, and keep the documentation
+aligned with the implementation.

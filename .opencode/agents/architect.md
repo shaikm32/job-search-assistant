@@ -39,22 +39,30 @@ OUTPUT
 
 Return exactly these sections:
 
-## Current State
-Relevant existing implementation and decisions.
+## STATUS
+One line: whether the plan is complete or blocked, and why.
 
-## Required Changes
-Concrete changes required to satisfy the task.
+## DECISIONS
+The architectural decisions that resolve the task. This includes the relevant
+existing implementation and decisions (Current State) and the concrete changes
+required to satisfy the task (Required Changes).
 
-## Files
+## FILES
 Exact files that should be modified or created.
 
-## Constraints
-Existing architecture, security, compatibility, or implementation constraints that must be preserved.
+## VERIFICATION
+The specific validation required for the changed behavior.
 
-## Validation
-Specific validation required for the changed behavior.
+## RISKS/BLOCKERS
+Existing architecture, security, compatibility, or implementation constraints
+that must be preserved, plus any risk, blocker, or missing information.
+
+## NEXT ACTION
+The concrete next step the Developer should take.
 
 The plan must be sufficiently concrete for the Developer to implement it without repeating the discovery work.
+
+Do not include chronological investigation narratives, full tool output, file contents, or unnecessary explanation.
 
 ### TASK MEMORY OWNERSHIP
 
@@ -69,3 +77,7 @@ Do not modify any other .task.md section.
 Replace stale information rather than appending history.
 Do not add reasoning, transcripts, tool output, or source-code contents.
 If information belongs to another section, report it to the Orchestrator.
+
+Treat conversation history as working memory, not durable storage. Put durable
+task state, decisions, requirements, and important findings in the appropriate
+repository artifact.

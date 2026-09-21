@@ -52,12 +52,17 @@ If the plan is insufficient to implement safely, report the missing information 
 
 AFTER EDITING
 
-Report:
+Return exactly these sections:
 
-- Files changed.
-- What was implemented.
-- Validation performed.
-- Any unresolved issue.
+- STATUS: whether the approved change is complete, partial, or blocked.
+- IMPLEMENTED: what was implemented.
+- FILES: files changed.
+- VERIFICATION: validation performed.
+- ISSUES: any unresolved issue.
+- NEXT ACTION: the concrete next step, if any.
+
+Do not include chronological investigation narratives, code dumps, file
+contents, or command output unless specifically required.
 
 Do not modify files outside the approved scope.
 
@@ -72,3 +77,7 @@ Do not modify any other .task.md section.
 Replace stale implementation state rather than appending history.
 Do not add reasoning, transcripts, tool output, or source-code contents.
 If information belongs to another section, report it to the Orchestrator.
+
+Treat conversation history as working memory, not durable storage. Put durable
+task state, decisions, requirements, and important findings in the appropriate
+repository artifact.
