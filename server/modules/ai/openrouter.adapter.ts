@@ -3,6 +3,7 @@ import {
   AiProviderUnavailableError,
   AiResponseInvalidError,
 } from './ai.errors.js'
+import { resolveOutputTokenBudget } from './output-budget.js'
 import type { AiStructuredOutputSupport } from '../../../shared/domain/ai.js'
 import type {
   AiModelMetadata,
@@ -48,9 +49,6 @@ import type {
 
 const OPENROUTER_CHAT_COMPLETIONS_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models'
-
-/** Bounded output so a JSON response cannot be truncated mid-object. */
-const MAX_OUTPUT_TOKENS = 8192
 
 /** Defensive bound so a malformed catalog cannot allocate unbounded memory. */
 const MAX_DISCOVERED_MODELS = 1000
@@ -279,7 +277,7 @@ export const openRouterAdapter: AiProviderAdapter = {
 
     const body: Record<string, unknown> = {
       model: model.providerModelId,
-      max_tokens: MAX_OUTPUT_TOKENS,
+      max_tokens: resolveOutputTokenBudget(request.operation, model.contextCapacity),
       messages: [
         { role: 'system', content: request.systemPrompt },
         {

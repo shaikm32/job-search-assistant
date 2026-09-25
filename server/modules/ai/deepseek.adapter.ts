@@ -3,6 +3,7 @@ import {
   AiProviderUnavailableError,
   AiResponseInvalidError,
 } from './ai.errors.js'
+import { resolveOutputTokenBudget } from './output-budget.js'
 import type {
   AiModelMetadata,
   AiProviderAdapter,
@@ -36,9 +37,6 @@ import type {
  */
 
 const DEEPSEEK_CHAT_COMPLETIONS_URL = 'https://api.deepseek.com/chat/completions'
-
-/** Bounded output so a JSON response cannot be truncated mid-object. */
-const MAX_OUTPUT_TOKENS = 8192
 
 const ALL_OPERATIONS = [
   'analyze_resume',
@@ -152,7 +150,7 @@ export const deepSeekAdapter: AiProviderAdapter = {
 
     const body: Record<string, unknown> = {
       model: model.providerModelId,
-      max_tokens: MAX_OUTPUT_TOKENS,
+      max_tokens: resolveOutputTokenBudget(request.operation, model.contextCapacity),
       messages: [
         { role: 'system', content: request.systemPrompt },
         {
