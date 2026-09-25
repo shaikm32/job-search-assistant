@@ -203,15 +203,151 @@ Implemented in sub-slices (M9-A through M9-E).
   completed/retention session status transition.
 - **Status:** Complete (M9-F); deferred items remain outstanding.
 
+### M9-G — OpenRouter and searchable model selection
+
+- **Objective:** Add OpenRouter as a configurable provider with dynamically
+  discovered models, and make operation-time model selection searchable for
+  every provider.
+- **Implemented:**
+  - OpenRouter adapter (`server/modules/ai/openrouter.adapter.ts`) registered
+    in the provider registry and added to `AI_PROVIDERS` in
+    `shared/domain/ai.ts`: OpenAI-compatible Chat Completions with JSON mode
+    (same verified mechanism as DeepSeek) and a dynamically discovered model
+    catalog fetched from `GET https://openrouter.ai/api/v1/models` — no
+    OpenRouter model is hard-coded.
+  - `AiProviderAdapter` gained an optional `discoverModels(credential)` seam
+    (ADR-007); the registry, AI service validation, credential handling, and
+    feature pipeline are otherwise unchanged. Settings, save/replace/clear,
+    structural key validation, and secure-store behavior are shared
+    per-provider behavior already driven by the registry.
+  - `getAiOperationOptions` is now async and refreshes dynamic catalogs for
+    configured dynamic providers before listing models; a failed or empty
+    refresh never clears a cached catalog and never blocks other providers.
+    The operation-options route awaits it; the existing frontend options hook
+    already handles async loading unchanged.
+  - Searchable model selection: shared `ModelSelect` component
+    (`src/components/common/`) over pure `modelSearch` helpers — case-insensitive
+    partial matching on display name and model ID, filtering while typing, a
+    clear no-results state, and preservation of the selected model — wired into
+    the Resume Enhancer session page for all providers. Resume Analyzer
+    provider/model selection reaches OpenRouter discovered models through the
+    existing AI operation pipeline with no OpenRouter-specific feature logic.
+- **Key decisions:** ADR-007 (OpenRouter dynamic catalog + searchable
+  selection); discovery failures degrade to cache or empty; discovered models
+  declared conservatively as `json_object` with backend capability validation
+  unchanged (ADR-006).
+- **Validation:** `tests/m9g-openrouter.test.ts` added (registration,
+  API-key save/replace/clear/validation, discovery parsing and failure/empty/
+  invalid-key cases, selection + execution through the existing pipeline,
+  and the shared search/filter behavior) — 22 tests. The M9-A..M9-F suites
+  remain green (66 tests; only two `getAiOperationOptions` call sites awaited
+  in `m9e-providers.test.ts`). Server and web typechecks, lint (0 errors; only
+  pre-existing hook warnings), and the production build pass.
+- **Status:** Complete.
+
+### M9-G security hardening — native Windows credential store
+
+- **Objective:** Remove the Windows PowerShell + P/Invoke credential bridge
+  that Windows Defender detected as `Behavior:Win32/MaleficAms.B`, keeping
+  Windows Credential Manager as the storage mechanism.
+- **Investigation:** Static, read-only review of the credential path found no
+  malicious behavior: the executed script is a fixed literal in version
+  control, uses only the `advapi32` credential APIs (`CredWriteW`/`CredReadW`/
+  `CredDeleteW`/`CredFree`), never places the secret in process arguments or
+  environment, and performs no registry, policy, persistence, network, or
+  external-code action. The detection is a behavior-signature false positive.
+  The code path predates M9-G (introduced M9-B, unchanged since) and was not
+  part of the M9-G diff.
+- **Implemented:**
+  - `server/modules/ai/windows-credential-store.ts` rewritten to call the
+    Win32 Credential API in-process through the koffi FFI binding: no
+    PowerShell, no `cmdkey`, no subprocess, no stdin/stdout or base64 hop.
+  - The `CredentialStore` abstraction, credential target namespace
+    (`Job Search Assistant/AI/<provider>`), read/write/clear semantics, and
+    the no-plaintext-fallback rule are unchanged; only the platform bridge
+    was replaced, as ADR-003 and AI_ARCHITECTURE.md §4 already anticipated.
+  - Wire format matches the previous implementation exactly (generic
+    credential, local-machine persistence, `api-key` user name, raw UTF-8
+    blob), so pre-existing stored credentials remain readable without
+    re-entry.
+  - koffi loads lazily inside a guarded binding step so a missing or
+    incompatible native binary reports the store unavailable instead of
+    crashing on non-Windows platforms, where the store class is still
+    imported by the platform factory.
+- **Dependency:** `koffi` (MIT, actively maintained, version 3.3.1) added to
+  runtime dependencies — the project's first native runtime dependency.
+  Prebuilt per-platform binaries ship through registry-distributed optional
+  dependencies (no compilation step); it is used for credential storage only.
+  The investigated `@napi-rs/keyring` was rejected: its v2.1.0 Windows
+  explicit-target entry construction writes an empty-secret placeholder that
+  silently clobbers stored secrets on read (demonstrated in an isolated
+  probe).
+- **Key decisions:** ADR-008 (in-process native Win32 credential store).
+- **Validation:** `tests/m9g-windows-credential-store.test.ts` added —
+  Windows-gated round trip against the real Credential Manager with dummy
+  values only, covering write, read, replace, clear, missing credential,
+  non-ASCII byte fidelity, per-provider target isolation, cross-instance
+  persistence, and a guard that the suite never addresses the production
+  target namespace (10 tests, win32). The existing M9-A..M9-G suites remain
+  green (98 tests total); the new store read a real credential previously
+  written by the PowerShell implementation, confirming backward
+  compatibility. Server and web typechecks, production builds, and lint pass.
+- **Note:** Electron packaging must keep `node_modules/koffi` and the
+  current-platform `@koromix/koffi-*` package unpacked from any asar;
+  recorded as a constraint in ADR-008 for the future packaging slice.
+- **Status:** Complete.
+
+### M9-G OpenRouter structured-output capability fix
+
+- **Objective:** Close the residual capability-claim gap acknowledged in the
+  M9-G ADR-007 entry above (the one the original milestone entry recorded as
+  "declared conservatively as `json_object`", which is now superseded by the
+  follow-up below rather than rewritten). Resume Analyzer failed on
+  `qwen/qwen3.8-27b:free` at the `analyze_match` step: the adapter sent
+  `response_format: { type: 'json_object' }` unconditionally, a mode that the
+  model's single free endpoint does not advertise. The live failure captured
+  during the later diagnostic was an HTTP 404 workspace-guardrail exclusion
+  (an account configuration issue, not a request-shape rejection). The
+  capability mapping below declares each model with the tier its catalog entry
+  actually supports.
+- **Implemented:**
+  - `server/modules/ai/openrouter.adapter.ts` maps each discovered model's
+    structured-output capability from the catalog entry's
+    `supported_parameters` onto the existing shared
+    `AiStructuredOutputSupport` contract: `structured_outputs` →
+    `json_schema`, else `response_format` → `json_object`, else `none`.
+  - Request construction is tiered by that capability: `json_schema` models
+    receive strict OpenAI-style JSON-schema enforcement built from the
+    request's canonical schema (same name/strictness semantics as the OpenAI
+    adapter), `json_object` models keep JSON mode, and `none` models receive
+    no `response_format` (and are already rejected before execution by
+    `validateAiSelection` for structured operations).
+  - No provider abstraction, shared contract, frontend, credential, or other
+    provider changes; no retry, error-body sniffing, or per-endpoint probing.
+- **Key decisions:** Amended ADR-007: the conservative blanket `json_object`
+  claim is replaced by per-model capability mapping from
+  `supported_parameters`, preferring `structured_outputs`/`json_schema`.
+- **Validation:** `tests/m9g-openrouter.test.ts` extended with focused
+  capability-mapping and request-body tests (28 tests total), including the
+  `qwen/qwen3.8-27b:free` case mapping to `json_schema` from representative
+  catalog data. The full M9-A..M9-G suites remain green (104 tests). Server
+  and web typechecks, lint (0 errors on changed files), and production builds
+  pass.
+- **Unverified:** the live free-endpoint behavior for a real `json_schema`
+  request is asserted from OpenRouter's public catalog metadata and unit tests
+  only; it has not been executed against the provider (read-only environment).
+- **Status:** Complete.
+
 ---
 
 ## Current state
 
-M9-F is the latest completed Resume Enhancer milestone. The Resume Enhancer
-feature has secure multi-provider AI configuration, operation-time model
-selection, and an in-process, polling-based execution engine covering resume
-analysis, suggestion generation, resume enhancement, re-analysis, and cover
-letter generation.
+M9-G is the latest completed Resume Enhancer milestone. The Resume Enhancer
+feature has secure multi-provider AI configuration (including the OpenRouter
+gateway with dynamically discovered models), searchable operation-time
+provider/model selection, and an in-process, polling-based execution engine
+covering resume analysis, suggestion generation, resume enhancement,
+re-analysis, and cover letter generation.
 
 Remaining Resume Enhancer work is deferred and separately scoped: DOCX/PDF
 generation and download, Application carry-over, Recent Enhancement revisit and

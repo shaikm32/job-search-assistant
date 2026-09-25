@@ -10,8 +10,10 @@
 /**
  * Supported AI providers. Only implemented and verified providers are listed;
  * placeholder providers are not defined (AI_ARCHITECTURE.md §3, ADR-006).
+ * OpenRouter is an independent gateway provider whose model catalog is
+ * discovered dynamically rather than hard-coded (ADR-007).
  */
-export const AI_PROVIDERS = ['openai', 'anthropic', 'gemini', 'deepseek'] as const
+export const AI_PROVIDERS = ['openai', 'anthropic', 'gemini', 'deepseek', 'openrouter'] as const
 
 export type AiProviderId = (typeof AI_PROVIDERS)[number]
 

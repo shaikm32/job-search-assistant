@@ -73,9 +73,8 @@ External Provider
 
 The registry exposes only providers whose adapters are implemented and verified.
 
-- Implemented today: OpenAI.
-- Planned initial set: Anthropic, Google Gemini, DeepSeek.
-- Future candidates: Z.ai / GLM, OpenRouter, Ollama.
+- Implemented today: OpenAI, Anthropic, Google Gemini, DeepSeek, OpenRouter.
+- Future candidates: Z.ai / GLM, Ollama.
 
 ### Responsibilities
 
@@ -117,16 +116,21 @@ The adapter boundary must prevent provider-specific behavior from entering featu
 
 ### Initial providers
 
-The initial multi-provider implementation targets:
+The initial multi-provider implementation targeted:
 
 - OpenAI
 - Anthropic
 - Google Gemini
 - DeepSeek
 
-Future provider candidates: Z.ai / GLM, OpenRouter, Ollama.
+These four were integrated as independent direct-provider adapters (ADR-006).
+OpenRouter (a multi-model gateway) was added in M9-G as an independent
+provider option using the same adapter architecture, with its model catalog
+discovered dynamically rather than declared in code (ADR-007).
 
-Only implemented and verified providers are registered and displayed. At the time of writing, OpenAI is the only implemented adapter; each other provider appears only once its adapter is implemented and verified.
+Future provider candidates: Z.ai / GLM, Ollama.
+
+Only implemented and verified providers are registered and displayed.
 
 No provider must become the architectural dependency of the application:
 
@@ -201,11 +205,12 @@ Settings may return safe metadata such as the configured providers and their con
 ### Platform behaviour and dependency implications
 
 - The mechanism differs per platform, so credential storage must be implemented behind the abstraction and must degrade explicitly rather than silently.
-- The implemented bridge uses no native npm dependency and no application-level encryption:
-  - Windows — PowerShell with P/Invoke into the Win32 Credential API (`advapi32`), writing a generic credential;
+- The implemented bridge uses no application-level encryption:
+  - Windows — the Win32 Credential API (`advapi32`: `CredWriteW`/`CredReadW`/`CredDeleteW`/`CredFree`) called in-process through the koffi FFI binding, writing a generic credential (ADR-008; replaces the earlier PowerShell + P/Invoke bridge, whose behavior Windows Defender flagged as `Behavior:Win32/MaleficAms.B`);
   - macOS — the system `security` tool against the Keychain;
   - Linux — `secret-tool`, the libsecret command-line client, against the Secret Service.
-- The secret is passed to the bridge on standard input rather than as a process argument, so it cannot appear in a process listing.
+- On Windows the native binding is loaded lazily and only when the store is used; a missing or incompatible binary reports the store as unavailable rather than crashing, and no subprocess is launched for credential storage.
+- The secret is passed to the platform bridge without ever appearing in process arguments; on Windows it crosses FFI only as a native buffer that is zeroed after the call.
 - Where the OS mechanism is unavailable (for example a Linux desktop or server environment without a running Secret Service), AI features must report secure credential storage as unavailable rather than falling back to insecure storage.
 - Credential storage availability is independent of database and document storage, which continue to work normally.
 - A failed or unavailable credential store must never break application startup.
@@ -514,6 +519,12 @@ An unconfigured provider must not be selectable for an operation.
 
 - After selecting a provider, the feature displays the models available for that provider.
 - Model metadata should be supplied by the provider architecture rather than hard-coded into feature components.
+- The model selector supports text search/filtering for every provider
+  (M9-G): case-insensitive partial matching on model display name and model ID,
+  filtering while typing, a clear no-results state, and preservation of the
+  selected model while searching. Filtering is a shared UI concern applied to
+  the backend-supplied descriptor list, so it works unchanged for large
+  dynamically discovered catalogs such as OpenRouter (ADR-007).
 - A model descriptor may contain:
 modelId
 displayName
@@ -559,20 +570,44 @@ Anthropic adapter
 
 Feature code must use provider-neutral model identifiers/contracts and must not embed vendor model names.
 
+### Dynamic model catalogs
+
+A gateway provider such as OpenRouter exposes a large, frequently changing
+catalog that must not be hard-coded (ADR-007). Such a provider implements the
+optional adapter capability `discoverModels(credential)`: it refreshes its own
+provider-owned model cache from the provider's model API. The registry and AI
+service treat the resulting metadata exactly like declared metadata, so the
+`AiModelMetadata → AiModelDescriptor` projection and all backend capability
+validation are unchanged.
+
+Rules:
+
+- Discovery runs only for configured providers that implement it, when
+  operation-time options are built (`GET /api/ai/operation-options`).
+- The credential is used solely as the provider's authorization and is never
+  logged or surfaced; discovery failures map to the safe application error
+  model (§18).
+- A failed or empty refresh never replaces a working cached catalog; a provider
+  with no cached catalog contributes no models, and other configured providers
+  remain available.
+- Structured-output capability for dynamic catalogs is mapped from each
+  catalog entry's `supported_parameters` onto the existing shared capability
+  contract (ADR-007): `structured_outputs` advertises `json_schema`,
+  `response_format` advertises `json_object`, neither advertises `none`.
+  Properties a catalog cannot describe (for example per-operation
+  applicability) are declared conservatively, and backend capability
+  validation still applies before execution.
+
 ### Implementation status
 
-The initial M9 provider set is:
-
-- OpenAI
-- Anthropic
-- Google Gemini
-- DeepSeek
-
-All four providers are implemented and verified through independent provider adapters.
+The initial M9 provider set was OpenAI, Anthropic, Google Gemini, and DeepSeek,
+all implemented and verified through independent provider adapters. OpenRouter
+was added in M9-G as an independent gateway provider with a dynamically
+discovered catalog (ADR-007).
 
 Only implemented and verified providers are registered in the provider registry and exposed to users.
 
-Future provider candidates such as Z.ai/GLM, OpenRouter, and Ollama are not part of the initial M9 implementation.
+Future provider candidates such as Z.ai/GLM and Ollama are not part of the M9 implementation.
 
 
 ## 16. Reasoning Configuration
@@ -637,6 +672,10 @@ Model
 The Provider list contains only configured providers.
 
 The Model list contains only models supported by the selected provider.
+
+The Model list is searchable for every provider (M9-G): text filtering by
+display name or model ID, with the selected model preserved in the visible
+options even when it does not match the current search text.
 
 ### Provider configuration state
 The frontend receives safe metadata only:

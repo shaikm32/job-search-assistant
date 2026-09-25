@@ -61,8 +61,11 @@ The initial provider set is:
 - Anthropic
 - Google Gemini
 - DeepSeek
+- OpenRouter
 
-Future provider candidates are Z.ai / GLM, OpenRouter, and Ollama.
+Future provider candidates are Z.ai / GLM and Ollama.
+
+OpenRouter is a multi-model gateway whose model list is retrieved from the provider when the user selects it for an operation, rather than a fixed built-in list.
 
 The product is provider-agnostic: additional providers are added through new provider adapters without changing Resume Enhancer behaviour.
 
@@ -82,6 +85,8 @@ The selected provider and model are part of the AI operation request; the backen
 There is no global active provider. The application may remember the last-used provider/model per feature as a convenience preference, and that preference is not provider configuration.
 
 The application selects a sensible default model but the user may choose another supported model.
+
+The model list is searchable for every provider: the user can type to filter models by name or identifier, and the current selection is never changed by filtering (M9-G).
 
 Reasoning-effort selection is not exposed in M9; the architecture remains capable of representing it.
 

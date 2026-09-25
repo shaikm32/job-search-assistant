@@ -143,6 +143,14 @@ export interface AiProviderAdapter {
   /** Models this adapter actually supports, with their capabilities. */
   readonly models: readonly AiModelMetadata[]
   /**
+   * Optional seam for adapters whose catalog is dynamic rather than
+   * hard-coded (for example the OpenRouter gateway, ADR-007). Implementations
+   * refresh their own `models` from the provider's model API. The credential
+   * may only be used as the provider's authorization and must never be
+   * logged or surfaced. Providers without dynamic catalogs omit this method.
+   */
+  discoverModels?(credential: string): Promise<void>
+  /**
    * Performs an operation. Implementations own authentication, endpoints,
    * model wire mapping, request construction, structured-output translation,
    * reasoning translation, response parsing, and provider error translation.

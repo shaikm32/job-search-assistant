@@ -146,17 +146,65 @@ export function readProviderCredential(provider: AiProviderId): string | null {
 }
 
 /**
+ * Refreshes catalogs for configured providers whose models are discovered
+ * dynamically rather than hard-coded (ADR-007). Providers without a dynamic
+ * catalog are untouched, and no request is made for unconfigured providers.
+ *
+ * A failed refresh never fails the whole options request: with a usable
+ * cached catalog the adapter keeps offering it; with no catalog to fall back
+ * on, the provider simply has no models listed and is filtered out downstream,
+ * leaving other configured providers available. Only the safe error name is
+ * logged; raw provider details never cross this boundary
+ * (AI_ARCHITECTURE.md §18).
+ */
+async function refreshDynamicCatalogs(
+  providers: AiSettings['providers'],
+): Promise<void> {
+  for (const provider of providers) {
+    if (!provider.configured) {
+      continue
+    }
+    const adapter = getProviderAdapter(provider.id)
+    if (!adapter?.discoverModels) {
+      continue
+    }
+    const credential = readProviderCredential(provider.id)
+    if (credential === null) {
+      continue
+    }
+    try {
+      await adapter.discoverModels(credential)
+    } catch (error) {
+      console.error(
+        `AI model discovery refresh failed for provider ${provider.id} ` +
+          `(${error instanceof Error ? error.name : 'unknown error'}).`,
+      )
+    }
+  }
+}
+
+/**
  * Safe operation-time provider/model options for an AI feature
  * (AI_ARCHITECTURE.md §15): only configured providers, and only models that
  * support the requested operation. Provider wire identifiers are never
- * included.
+ * included. Configured providers with dynamic catalogs (for example
+ * OpenRouter, ADR-007) are refreshed from the provider before their models
+ * are listed. Models lacking the capability the operation requires (for
+ * example structured output) are listed the same way selection validation
+ * treats them (ADR-006): excluded from options for structured-output
+ * operations, so a `none` model can never appear as selectable or as the
+ * default.
  */
-export function getAiOperationOptions(operation: AiOperation): AiOperationOptions {
+export async function getAiOperationOptions(operation: AiOperation): Promise<AiOperationOptions> {
   const settings = buildSettings()
+  await refreshDynamicCatalogs(settings.providers)
+  const requiresStructuredOutput = AI_OPERATION_REQUIREMENTS[operation].structuredOutput
   const providers = settings.providers
     .filter((provider) => provider.configured)
     .map((provider) => {
-      const models = listModelsForOperation(provider.id, operation).map(toModelDescriptor)
+      const models = listModelsForOperation(provider.id, operation)
+        .filter((model) => !(requiresStructuredOutput && model.structuredOutput === 'none'))
+        .map(toModelDescriptor)
       const defaultModelId = resolveDefaultModelId(provider.id, operation)
       const resolvedDefault =
         defaultModelId && models.some((model) => model.modelId === defaultModelId)

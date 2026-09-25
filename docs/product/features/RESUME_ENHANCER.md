@@ -213,7 +213,7 @@ Settings is reachable from the application navigation and provides, per provider
 - Save/Update
 - Clear
 
-The user may configure multiple providers. The initial provider set is OpenAI, Anthropic, Google Gemini, and DeepSeek; only implemented and verified providers appear in the list.
+The user may configure multiple providers. The provider set is OpenAI, Anthropic, Google Gemini, DeepSeek, and OpenRouter; only implemented and verified providers appear in the list.
 
 The product is provider-agnostic: additional providers are added through new provider adapters without changing this workflow. Only implemented providers appear in the list.
 

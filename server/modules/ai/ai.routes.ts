@@ -27,7 +27,9 @@ import {
  * - PUT    /api/ai/settings                → save one provider's credential
  * - DELETE /api/ai/settings/:providerId    → clear one provider only
  * - GET    /api/ai/operation-options?operation=... → configured providers and
- *   their models for an operation (AI feature provider/model selection)
+ *   their models for an operation (AI feature provider/model selection).
+ *   Configured providers with dynamic catalogs (for example OpenRouter,
+ *   ADR-007) are refreshed from the provider before their models are listed.
  */
 export async function handleAiRoutes(
   request: IncomingMessage,
@@ -63,7 +65,7 @@ export async function handleAiRoutes(
 
   if (rest.length === 1 && rest[0] === 'operation-options' && request.method === 'GET') {
     const operation = validateAiOperation(url.searchParams.get('operation'))
-    sendJson(response, 200, getAiOperationOptions(operation))
+    sendJson(response, 200, await getAiOperationOptions(operation))
     return true
   }
 

@@ -219,12 +219,12 @@ describe('M9-E multi-provider configuration', () => {
     assert.deepEqual(configuredProviderIds(), ['deepseek', 'openai'])
   })
 
-  it('never echoes any credential in settings responses', () => {
+  it('never echoes any credential in settings responses', async () => {
     const settings = saveAiConfiguration({ provider: 'openai', apiKey: SECRET_OPENAI })
     assert.ok(!JSON.stringify(settings).includes(SECRET_OPENAI))
     assert.ok(!JSON.stringify(getAiConfiguration()).includes(SECRET_OPENAI))
     assert.ok(
-      !JSON.stringify(getAiOperationOptions('analyze_resume')).includes(SECRET_OPENAI),
+      !JSON.stringify(await getAiOperationOptions('analyze_resume')).includes(SECRET_OPENAI),
     )
   })
 
@@ -388,10 +388,10 @@ describe('M9-E execution reaches the selected provider and model', () => {
     assert.equal(calls[0]?.credential, SECRET_DEEPSEEK)
   })
 
-  it('offers only configured providers with their supported models', () => {
+  it('offers only configured providers with their supported models', async () => {
     clearAiConfiguration('openai')
     saveAiConfiguration({ provider: 'deepseek', apiKey: SECRET_DEEPSEEK })
-    const options = getAiOperationOptions('analyze_resume')
+    const options = await getAiOperationOptions('analyze_resume')
     assert.deepEqual(
       options.providers.map((entry) => entry.id),
       ['deepseek'],

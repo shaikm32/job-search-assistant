@@ -69,9 +69,12 @@ AI configuration (M9 Settings — currently implemented in the M9-B slice):
 GET    /api/ai/settings
 PUT    /api/ai/settings
 DELETE /api/ai/settings
+GET    /api/ai/operation-options?operation=...
 ```
 
 The AI configuration endpoints return and accept safe configuration state only. The API key may be submitted to save a credential, but it is never returned. Credentials are stored using OS-native secure credential storage and are never written to SQLite or to ordinary application files.
+
+`GET /api/ai/operation-options` returns configured providers and their models for one AI operation (AI_ARCHITECTURE.md §15). Since M9-G, configured providers with dynamically discovered catalogs (for example OpenRouter, ADR-007) are refreshed from the provider's model API while building the response; discovery failures never leak provider details and never block other configured providers.
 
 Enhancement sessions are not tied to an Application: the user enhances a resume first and may create an Application afterwards. Resume input accepts PDF and DOCX only; DOC is rejected.
 

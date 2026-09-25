@@ -8,6 +8,7 @@ import { anthropicAdapter } from './anthropic.adapter.js'
 import { deepSeekAdapter } from './deepseek.adapter.js'
 import { geminiAdapter } from './gemini.adapter.js'
 import { openAiAdapter } from './openai.adapter.js'
+import { openRouterAdapter } from './openrouter.adapter.js'
 import type { AiModelMetadata, AiProviderAdapter } from './provider.types.js'
 
 /**
@@ -26,6 +27,7 @@ const ADAPTERS: readonly AiProviderAdapter[] = [
   anthropicAdapter,
   geminiAdapter,
   deepSeekAdapter,
+  openRouterAdapter,
 ]
 
 const registry = new Map<AiProviderId, AiProviderAdapter>(

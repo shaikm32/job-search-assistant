@@ -7,6 +7,7 @@ import { useConfirm } from '../../components/common/ConfirmDialog.js'
 import { StatusBadge, type BadgeTone } from '../../components/common/StatusBadge.js'
 import { StatusBanner } from '../../components/common/StatusBanner.js'
 import { Field } from '../../components/common/Field.js'
+import { ModelSelect } from '../../components/common/ModelSelect.js'
 import { discardEnhancementSession } from './resumeEnhancerApi.js'
 import { AiOperationProgress, AnalysisResultView } from './AiOperationProgress.js'
 import './AiOperationProgress.css'
@@ -168,21 +169,14 @@ export function EnhancementSessionPage() {
         </Field>
 
         {providerOption ? (
-          <Field id="aiModel" label="AI Model">
-            <select
-              id="aiModel"
-              className="input"
-              value={resolvedModelId ?? ''}
-              disabled={starting || processing}
-              onChange={(event) => selectModel(event.target.value)}
-            >
-              {providerOption.models.map((entry) => (
-                <option key={entry.modelId} value={entry.modelId}>
-                  {entry.displayName}
-                </option>
-              ))}
-            </select>
-          </Field>
+          <ModelSelect
+            id="aiModel"
+            label="AI Model"
+            models={providerOption.models}
+            value={resolvedModelId}
+            disabled={starting || processing}
+            onChange={selectModel}
+          />
         ) : null}
       </div>
     )
