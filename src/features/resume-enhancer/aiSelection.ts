@@ -1,4 +1,4 @@
-﻿import {
+import {
   resolveAiProviderDisplayName,
   type AiModelDescriptor,
   type AiOperationOptions,
@@ -192,4 +192,3 @@ export function findExplicitProviderOption(
   }
   return options.providers.find((entry) => entry.id === providerId) ?? null
 }
-
