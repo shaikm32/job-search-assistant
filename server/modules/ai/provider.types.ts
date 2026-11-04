@@ -51,6 +51,7 @@ export const AI_OPERATION_REQUIREMENTS: Record<AiOperation, AiOperationRequireme
   enhance_resume: { structuredOutput: true, reasoning: false },
   reanalyze_resume: { structuredOutput: true, reasoning: false },
   generate_cover_letter: { structuredOutput: true, reasoning: false },
+  structure_resume: { structuredOutput: true, reasoning: false },
 }
 
 /**
@@ -157,6 +158,17 @@ export interface AiProviderAdapter {
    *
    * The credential is supplied by the AI service and must only ever be used as
    * the provider's authorization mechanism: never logged, stored, or surfaced.
+   *
+   * `signal` is the operation's abort signal (ADR-010). Adapters pass it to the
+   * provider request so cancellation aborts the in-flight `fetch`, and rethrow
+   * abort failures unchanged instead of translating them into provider errors.
+   *
+   * `timeoutMs` overrides the provider request bound; omitted, the request is
+   * bounded by `PROVIDER_REQUEST_TIMEOUT_MS` (see `provider-timeout.ts`). It is
+   * distinct from and shorter than the operation's hard bound: a provider
+   * timeout terminates the operation with `AiProviderTimeoutError` (504) and
+   * clears the operation timer, so there is no retry and no nested timeout
+   * budget. Tests may override it; production callers do not pass it.
    */
-  execute(request: AiRequest, credential: string): Promise<AiResponse>
+  execute(request: AiRequest, credential: string, signal?: AbortSignal, timeoutMs?: number): Promise<AiResponse>
 }

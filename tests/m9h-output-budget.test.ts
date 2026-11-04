@@ -3,13 +3,15 @@
  *
  * Covers the shared helper and both affected adapters: OpenRouter and direct
  * DeepSeek must resolve the same `max_tokens` from the same (operation,
- * context capacity) pair, with `enhance_resume` getting the larger budget and
- * every other operation keeping the historical 8192. No live provider calls.
+ * context capacity) pair, with the internal `structure_resume` fallback getting
+ * the larger budget and every other operation — including the now patch-only
+ * `enhance_resume` — keeping the historical 8192. No live provider calls.
  */
 import assert from 'node:assert/strict'
 import { after, beforeEach, describe, it } from 'node:test'
 import {
   DEFAULT_MAX_OUTPUT_TOKENS,
+  STRUCTURE_MAX_OUTPUT_TOKENS,
   resolveOutputTokenBudget,
 } from '../server/modules/ai/output-budget.js'
 import { openRouterAdapter, resetOpenRouterCatalogForTests } from '../server/modules/ai/openrouter.adapter.js'
@@ -76,10 +78,11 @@ beforeEach(() => {
 })
 
 describe('M9-H output budget helper', () => {
-  it('keeps every non-enhance operation at the historical 8192 ceiling', () => {
+  it('keeps every non-structure operation at the historical 8192 ceiling', () => {
     for (const operation of [
       'analyze_resume',
       'generate_suggestions',
+      'enhance_resume',
       'reanalyze_resume',
       'generate_cover_letter',
     ] as const) {
@@ -87,22 +90,23 @@ describe('M9-H output budget helper', () => {
       assert.equal(resolveOutputTokenBudget(operation, null), 8192)
     }
     assert.equal(DEFAULT_MAX_OUTPUT_TOKENS, 8192)
+    assert.equal(STRUCTURE_MAX_OUTPUT_TOKENS, 32768)
   })
 
-  it('gives enhance_resume the larger budget', () => {
-    assert.equal(resolveOutputTokenBudget('enhance_resume', 1_000_000), 32768)
-    assert.equal(resolveOutputTokenBudget('enhance_resume', 262_144), 32768)
+  it('gives the structure_resume fallback the larger budget', () => {
+    assert.equal(resolveOutputTokenBudget('structure_resume', 1_000_000), 32768)
+    assert.equal(resolveOutputTokenBudget('structure_resume', 262_144), 32768)
   })
 
-  it('bounds the enhance budget by the model context capacity (never enormous)', () => {
+  it('bounds the structure budget by the model context capacity (never enormous)', () => {
     // 50k window -> at most a quarter (12500), above the 8192 floor.
-    assert.equal(resolveOutputTokenBudget('enhance_resume', 50_000), 12_500)
+    assert.equal(resolveOutputTokenBudget('structure_resume', 50_000), 12_500)
     // Tiny window -> the floor still applies; never exceeds the ceiling.
-    assert.equal(resolveOutputTokenBudget('enhance_resume', 4000), 8192)
+    assert.equal(resolveOutputTokenBudget('structure_resume', 4000), 8192)
     // Unknown/invalid capacity -> the full ceiling without any clamping.
-    assert.equal(resolveOutputTokenBudget('enhance_resume', null), 32768)
-    assert.equal(resolveOutputTokenBudget('enhance_resume', Number.NaN), 32768)
-    assert.equal(resolveOutputTokenBudget('enhance_resume', -1), 32768)
+    assert.equal(resolveOutputTokenBudget('structure_resume', null), 32768)
+    assert.equal(resolveOutputTokenBudget('structure_resume', Number.NaN), 32768)
+    assert.equal(resolveOutputTokenBudget('structure_resume', -1), 32768)
   })
 })
 
@@ -111,12 +115,12 @@ describe('M9-H OpenRouter adapter max_tokens', () => {
     { id: 'vendor/big-context', name: 'Big', context_length: 1_000_000, supported_parameters: ['structured_outputs'] },
   ]
 
-  it('sends 8192 for analyze_resume and 32768 for enhance_resume (same model)', async () => {
+  it('sends 8192 for analyze_resume and 32768 for structure_resume (same model)', async () => {
     stubFetch(CATALOG)
     await openRouterAdapter.discoverModels('sk-or-v1-test-key')
     await openRouterAdapter.execute(chatRequest({ operation: 'analyze_resume' }), 'k')
     await openRouterAdapter.execute(
-      chatRequest({ operation: 'enhance_resume', modelId: 'vendor/big-context' }),
+      chatRequest({ operation: 'structure_resume', modelId: 'vendor/big-context' }),
       'k',
     )
     const chats = captured.filter((call) => call.url.includes('/chat/completions'))
@@ -125,11 +129,22 @@ describe('M9-H OpenRouter adapter max_tokens', () => {
     assert.equal(chats[1]!.body.max_tokens, 32768)
   })
 
+  it('keeps enhance_resume at 8192 now that it returns only a patch', async () => {
+    stubFetch(CATALOG)
+    await openRouterAdapter.discoverModels('sk-or-v1-test-key')
+    await openRouterAdapter.execute(
+      chatRequest({ operation: 'enhance_resume', modelId: 'vendor/big-context' }),
+      'k',
+    )
+    const chat = captured.find((call) => call.url.includes('/chat/completions'))!
+    assert.equal(chat.body.max_tokens, 8192)
+  })
+
   it('respects the model context capacity for a small-window model', async () => {
     stubFetch([{ id: 'vendor/small', name: 'Small', context_length: 40_000, supported_parameters: ['structured_outputs'] }])
     await openRouterAdapter.discoverModels('sk-or-v1-test-key')
     await openRouterAdapter.execute(
-      chatRequest({ operation: 'enhance_resume', modelId: 'vendor/small' }),
+      chatRequest({ operation: 'structure_resume', modelId: 'vendor/small' }),
       'k',
     )
     const chat = captured.find((call) => call.url.includes('/chat/completions'))!
@@ -147,7 +162,7 @@ describe('M9-H DeepSeek adapter max_tokens (consistency with OpenRouter)', () =>
       modelId: 'deepseek-flash',
     })
     await deepSeekAdapter.execute(request('generate_suggestions'), 'k')
-    await deepSeekAdapter.execute(request('enhance_resume'), 'k')
+    await deepSeekAdapter.execute(request('structure_resume'), 'k')
     const chats = captured.filter((call) => call.url.includes('api.deepseek.com'))
     assert.equal(chats.length, 2)
     assert.equal(chats[0]!.body.max_tokens, 8192)

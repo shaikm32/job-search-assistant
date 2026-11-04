@@ -19,6 +19,9 @@ import { ApiError, ConflictError, NotFoundError } from '../../http/api-errors.js
  * - Lifecycle: queued â†’ running â†’ completed | failed | timed_out.
  * - Hard five-minute upper bound per operation (PD-M9-032). The timeout is a
  *   hard bound, not an expected response time.
+ * - Cancellation is a real, user-initiated transition to the terminal
+ *   `cancelled` state; the operation's in-flight provider request is aborted
+ *   and any result that still arrives is discarded (ADR-010).
  * - Only one AI operation may run per enhancement session at a time
  *   (PD-M9-033); a second start is rejected with a conflict.
  * - A late provider response must never overwrite a timed-out, failed, or
@@ -51,6 +54,8 @@ interface AiOperationRecord {
   error: string | null
   result: unknown
   timer: NodeJS.Timeout | null
+  /** Aborts in-flight provider work when the operation is cancelled (ADR-010). */
+  controller: AbortController
   /** Resolves `done` once the operation reaches a terminal state. */
   settle: () => void
 }
@@ -63,6 +68,12 @@ export interface AiOperationStepContext {
   activateStep(stepId: string): void
   /** Marks a step completed. */
   completeStep(stepId: string): void
+  /**
+   * Aborted when the operation is cancelled (ADR-010). Runners forward it to
+   * provider requests so an in-flight request is aborted; a result that
+   * arrives anyway is discarded by the engine.
+   */
+  signal: AbortSignal
 }
 
 /** The runner performs the operation's actual work and reports step progress. */
@@ -194,6 +205,7 @@ export function startAiOperation(input: StartAiOperationInput): StartedAiOperati
     error: null,
     result: null,
     timer: null,
+    controller: new AbortController(),
     settle: () => undefined,
   }
   operations.set(record.id, record)
@@ -218,6 +230,7 @@ export function startAiOperation(input: StartAiOperationInput): StartedAiOperati
       const result = await input.runner({
         activateStep: (stepId) => setStepActive(record, stepId),
         completeStep: (stepId) => setStepCompleted(record, stepId),
+        signal: record.controller.signal,
       })
       if (!isActive(record)) {
         // Timed out or invalidated while running: the late result is dropped
@@ -263,9 +276,42 @@ export function getAiOperationStatus(sessionId: string, operationId: string): Ai
 }
 
 /**
+ * Cancels an active operation (ADR-010, RESUME_ENHANCER.md §4).
+ *
+ * Order matters: the terminal `cancelled` state is set before the abort so a
+ * runner that rejects synchronously on abort can never be observed as
+ * `failed` (`failOperation` returns early for non-active operations). An
+ * already-terminal operation is left untouched, which makes duplicate cancels
+ * and the completed-before-cancel race safe: the caller reads the returned
+ * `state` and must not discard a completed session.
+ */
+export function cancelAiOperation(sessionId: string, operationId: string): AiOperationStatus {
+  const record = operations.get(operationId)
+  if (!record || record.sessionId !== sessionId) {
+    throw new NotFoundError('AI operation not found.')
+  }
+  if (isActive(record)) {
+    record.state = 'cancelled'
+    record.error = null
+    record.result = null
+    record.currentStep = null
+    finishOperation(record)
+    record.controller.abort()
+    record.settle()
+  }
+  return getAiOperationStatus(sessionId, operationId)
+}
+
+/**
  * Invalidates any active operation for a session, for example when the session
- * is discarded. This is internal invalidation, not a user-facing cancel
- * control: cancellation remains unimplemented per ADR-004.
+ * is discarded. This is internal invalidation, not the user-facing cancel
+ * control (see `cancelAiOperation`, ADR-010).
+ *
+ * Ordering mirrors `cancelAiOperation`: the terminal `failed` state is recorded
+ * first (so a runner that rejects on abort can never be observed as another
+ * state), then the in-flight provider request is aborted, then `done` settles.
+ * A result that still arrives after the abort is dropped by the runner's
+ * active-state check.
  */
 export function invalidateOperationsForSession(sessionId: string, reason: string): void {
   const activeId = activeBySession.get(sessionId)
@@ -280,6 +326,7 @@ export function invalidateOperationsForSession(sessionId: string, reason: string
   record.error = reason
   record.currentStep = null
   finishOperation(record)
+  record.controller.abort()
   record.settle()
 }
 

@@ -10,10 +10,13 @@
  */
 
 /**
- * Operation lifecycle states (AI_EXECUTION_AND_PROGRESS.md §3, ADR-004).
+ * Operation lifecycle states (AI_EXECUTION_AND_PROGRESS.md §3, ADR-004,
+ * ADR-010).
  *
- * `cancelled` is documented as a future cancellation mechanism only and is
- * intentionally not part of the implemented lifecycle.
+ * `cancelled` is the terminal state reached when the user confirms Stop
+ * Analysis. Cancellation is a single synchronous in-process transition
+ * (`running` → `cancelled`), so there is no `cancel_requested` intermediate
+ * state.
  */
 export const AI_OPERATION_STATES = [
   'queued',
@@ -21,6 +24,7 @@ export const AI_OPERATION_STATES = [
   'completed',
   'failed',
   'timed_out',
+  'cancelled',
 ] as const
 
 export type AiOperationState = (typeof AI_OPERATION_STATES)[number]
@@ -75,7 +79,8 @@ export interface AiOperationStatus {
   steps: AiProgressStep[]
   /**
    * Safe, user-presentable failure explanation for `failed` and `timed_out`
-   * operations; null otherwise. Never contains provider internals.
+   * operations; null otherwise. `cancelled` carries no error and `result`
+   * stays null.
    */
   error: string | null
   result: unknown

@@ -25,6 +25,10 @@ export function isAiProviderId(value: unknown): value is AiProviderId {
  * Canonical AI operation identifiers (AI_ARCHITECTURE.md §6). Operations are
  * application concepts, independent of any provider, so they are safe to
  * expose to the frontend as model capability metadata.
+ *
+ * `structure_resume` is an internal nested operation used only by the one-time
+ * BaseResume structuring fallback (M9-H). It is not surfaced as a normal
+ * user-selectable operation and has no step plan or polling endpoint.
  */
 export const AI_OPERATIONS = [
   'analyze_resume',
@@ -32,6 +36,7 @@ export const AI_OPERATIONS = [
   'enhance_resume',
   'reanalyze_resume',
   'generate_cover_letter',
+  'structure_resume',
 ] as const
 
 export type AiOperation = (typeof AI_OPERATIONS)[number]
@@ -45,12 +50,21 @@ export function isAiOperation(value: unknown): value is AiOperation {
  * - `json_schema` — the provider enforces the supplied schema.
  * - `json_object` — the provider guarantees valid JSON but not schema
  *   enforcement; schema conformance is enforced by application validation.
+ * - `prompted_json` — the provider has no native JSON mode or schema
+ *   enforcement; the adapter instructs the model in the prompt to return a
+ *   single JSON object matching the canonical schema, and the existing
+ *   application validation pipeline enforces conformance.
  * - `none` — no structured-output capability.
  *
  * The canonical vocabulary lets the backend validate an operation's required
  * capability without assuming every provider enforces schemas identically.
  */
-export const AI_STRUCTURED_OUTPUT_SUPPORTS = ['json_schema', 'json_object', 'none'] as const
+export const AI_STRUCTURED_OUTPUT_SUPPORTS = [
+  'json_schema',
+  'json_object',
+  'prompted_json',
+  'none',
+] as const
 
 export type AiStructuredOutputSupport = (typeof AI_STRUCTURED_OUTPUT_SUPPORTS)[number]
 
@@ -69,7 +83,10 @@ export function isAiStructuredOutputSupport(
  */
 export interface AiProviderDescriptor {
   id: AiProviderId
+  /** Canonical provider display name. User renames never change this value. */
   displayName: string
+  /** One-line, user-facing description shown when a provider is not connected. */
+  description: string
   /**
    * What the user must supply in Settings (for example "API key"). A label
    * only, never a stored value or a live format rule.
@@ -101,6 +118,21 @@ export interface AiModelDescriptor {
 export interface AiProviderConfigurationState extends AiProviderDescriptor {
   /** True when a credential is stored for this provider. */
   configured: boolean
+  /**
+   * User-assigned display name, or null when the provider uses its canonical
+   * name. The canonical `id` and `displayName` are never changed by a rename.
+   */
+  customDisplayName: string | null
+}
+
+/**
+ * The name to show for a configured provider. A user rename changes only the
+ * label, never the canonical provider identifier or credential ownership.
+ */
+export function resolveAiProviderDisplayName(
+  provider: Pick<AiProviderConfigurationState, 'displayName' | 'customDisplayName'>,
+): string {
+  return provider.customDisplayName ?? provider.displayName
 }
 
 /**

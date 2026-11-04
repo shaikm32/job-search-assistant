@@ -61,3 +61,17 @@ export class AiResponseInvalidError extends ApiError {
     this.name = 'AiResponseInvalidError'
   }
 }
+
+/**
+ * True when a failure is a cancelled/aborted request rather than a provider
+ * failure (ADR-010). Aborts are internal control flow: they are rethrown
+ * unchanged so a user-cancelled request is never reported or logged as a
+ * provider error. Only the error shape is inspected; no message is surfaced.
+ */
+export function isAbortError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { name?: unknown }).name === 'AbortError'
+  )
+}

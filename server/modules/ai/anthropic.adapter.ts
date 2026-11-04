@@ -1,8 +1,12 @@
 import {
   AiProviderRequestFailedError,
+  AiProviderTimeoutError,
   AiProviderUnavailableError,
   AiResponseInvalidError,
+  isAbortError,
 } from './ai.errors.js'
+import { combineSignals, PROVIDER_REQUEST_TIMEOUT_MS } from './provider-timeout.js'
+import { throwProviderHttpFailure } from './provider-http-errors.js'
 import { projectJsonSchema } from './schema-subset.js'
 import type {
   AiModelMetadata,
@@ -36,6 +40,9 @@ import type {
  *   logged, stored, or included in any error.
  * - Provider failures map to safe application-level errors; raw provider
  *   bodies are never surfaced (AI_ARCHITECTURE.md §18).
+ * - Each request is bounded by `PROVIDER_REQUEST_TIMEOUT_MS` (2 min): a
+ *   hanging provider fails fast with `AiProviderTimeoutError` instead of
+ *   consuming the whole operation budget (see `provider-timeout.ts`).
  */
 
 const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages'
@@ -50,6 +57,7 @@ const ALL_OPERATIONS = [
   'enhance_resume',
   'reanalyze_resume',
   'generate_cover_letter',
+  'structure_resume',
 ] as const
 
 /** Models this adapter supports, with provider-owned capabilities (ADR-006). */
@@ -130,7 +138,10 @@ async function parseResponse(response: Response): Promise<string> {
     let body: AnthropicMessagesResponse
     try {
       body = (await response.json()) as AnthropicMessagesResponse
-    } catch {
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error
+      }
       throw new AiResponseInvalidError()
     }
     const text = body.content?.find((block) => block.type === 'text')?.text
@@ -141,15 +152,7 @@ async function parseResponse(response: Response): Promise<string> {
   }
   // Non-OK responses are translated by status into safe categories; the raw
   // provider body is never surfaced (it can carry request/account details).
-  if (response.status === 429 || response.status >= 500) {
-    throw new AiProviderUnavailableError()
-  }
-  if (response.status === 401 || response.status === 403) {
-    throw new AiProviderRequestFailedError(
-      'The AI provider rejected the API key. Check your API key in Settings and try again.',
-    )
-  }
-  throw new AiProviderRequestFailedError()
+  throwProviderHttpFailure('anthropic', response.status)
 }
 
 export const anthropicAdapter: AiProviderAdapter = {
@@ -158,12 +161,18 @@ export const anthropicAdapter: AiProviderAdapter = {
   descriptor: {
     id: 'anthropic',
     displayName: 'Anthropic',
+    description: 'Claude models known for thoughtful writing and analysis.',
     credentialLabel: 'Anthropic API key',
   },
 
   models: MODELS,
 
-  async execute(request: AiRequest, credential: string): Promise<AiResponse> {
+  async execute(
+    request: AiRequest,
+    credential: string,
+    signal?: AbortSignal,
+    timeoutMs?: number,
+  ): Promise<AiResponse> {
     const model = resolveModel(request.modelId)
     if (!model) {
       throw new AiProviderRequestFailedError(
@@ -171,6 +180,7 @@ export const anthropicAdapter: AiProviderAdapter = {
       )
     }
     const startedAt = Date.now()
+    const resolvedTimeoutMs = timeoutMs ?? PROVIDER_REQUEST_TIMEOUT_MS
 
     const body: Record<string, unknown> = {
       model: model.providerModelId,
@@ -188,6 +198,8 @@ export const anthropicAdapter: AiProviderAdapter = {
     // adapter without reasoning translation ignores the intent rather than
     // failing the operation (AI_ARCHITECTURE.md §16).
 
+    const timeoutController = new AbortController()
+    const timeoutId = setTimeout(() => timeoutController.abort(), resolvedTimeoutMs)
     let response: Response
     try {
       response = await fetch(ANTHROPIC_MESSAGES_URL, {
@@ -199,10 +211,18 @@ export const anthropicAdapter: AiProviderAdapter = {
           'content-type': 'application/json',
         },
         body: JSON.stringify(body),
+        signal: combineSignals(signal, timeoutController.signal),
       })
     } catch (error) {
-      void error
+      if (isAbortError(error)) {
+        if (signal?.aborted) {
+          throw error
+        }
+        throw new AiProviderTimeoutError()
+      }
       throw new AiProviderUnavailableError()
+    } finally {
+      clearTimeout(timeoutId)
     }
 
     const content = await parseResponse(response)

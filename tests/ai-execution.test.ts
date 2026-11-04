@@ -311,7 +311,11 @@ describe('AI configuration boundary', () => {
       Record<string, unknown>
     >
     assert.equal(rows.length, 1)
-    assert.deepEqual(Object.keys(rows[0] ?? {}).sort(), ['provider', 'updated_at'])
+    assert.deepEqual(Object.keys(rows[0] ?? {}).sort(), [
+      'display_name',
+      'provider',
+      'updated_at',
+    ])
     for (const row of rows) {
       assert.ok(!JSON.stringify(row).includes(SECRET_KEY))
     }

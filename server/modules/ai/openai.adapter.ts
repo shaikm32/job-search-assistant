@@ -1,8 +1,12 @@
 import {
   AiProviderRequestFailedError,
+  AiProviderTimeoutError,
   AiProviderUnavailableError,
   AiResponseInvalidError,
+  isAbortError,
 } from './ai.errors.js'
+import { combineSignals, PROVIDER_REQUEST_TIMEOUT_MS } from './provider-timeout.js'
+import { throwProviderHttpFailure } from './provider-http-errors.js'
 import type {
   AiModelMetadata,
   AiProviderAdapter,
@@ -33,8 +37,10 @@ import type {
  *   logged, stored, or included in any error.
  * - Provider failures are translated into safe application-level errors
  *   (AI_ARCHITECTURE.md §18); raw provider error bodies are never surfaced.
- * - The hard operation timeout is owned by the execution engine (ADR-004);
- *   the adapter does not impose its own.
+ * - The hard operation timeout is owned by the execution engine (ADR-004); each
+ *   provider request is additionally bounded by `PROVIDER_REQUEST_TIMEOUT_MS`
+ *   (see `provider-timeout.ts`), so a hanging provider fails fast instead of
+ *   consuming the whole operation budget.
  */
 
 const OPENAI_CHAT_COMPLETIONS_URL = 'https://api.openai.com/v1/chat/completions'
@@ -45,6 +51,7 @@ const ALL_OPERATIONS = [
   'enhance_resume',
   'reanalyze_resume',
   'generate_cover_letter',
+  'structure_resume',
 ] as const
 
 /** Models this adapter supports, with provider-owned capabilities (ADR-006). */
@@ -98,7 +105,10 @@ async function parseResponse(response: Response): Promise<string> {
     let body: OpenAiChatResponse
     try {
       body = (await response.json()) as OpenAiChatResponse
-    } catch {
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error
+      }
       throw new AiResponseInvalidError()
     }
     const content = body.choices?.[0]?.message?.content
@@ -109,15 +119,7 @@ async function parseResponse(response: Response): Promise<string> {
   }
   // Non-OK responses are translated by status into safe categories. The raw
   // provider body is never surfaced: it can contain request/account details.
-  if (response.status === 429 || response.status >= 500) {
-    throw new AiProviderUnavailableError()
-  }
-  if (response.status === 401 || response.status === 403) {
-    throw new AiProviderRequestFailedError(
-      'The AI provider rejected the API key. Check your API key in Settings and try again.',
-    )
-  }
-  throw new AiProviderRequestFailedError()
+  throwProviderHttpFailure('openai', response.status)
 }
 
 export const openAiAdapter: AiProviderAdapter = {
@@ -126,12 +128,18 @@ export const openAiAdapter: AiProviderAdapter = {
   descriptor: {
     id: 'openai',
     displayName: 'OpenAI',
+    description: 'GPT models for analysis, writing, and structured output.',
     credentialLabel: 'OpenAI API key',
   },
 
   models: MODELS,
 
-  async execute(request: AiRequest, credential: string): Promise<AiResponse> {
+  async execute(
+    request: AiRequest,
+    credential: string,
+    signal?: AbortSignal,
+    timeoutMs?: number,
+  ): Promise<AiResponse> {
     const model = resolveModel(request.modelId)
     if (!model) {
       // The AI service validates model membership before execution; this is a
@@ -141,6 +149,7 @@ export const openAiAdapter: AiProviderAdapter = {
       )
     }
     const startedAt = Date.now()
+    const resolvedTimeoutMs = timeoutMs ?? PROVIDER_REQUEST_TIMEOUT_MS
 
     const body: Record<string, unknown> = {
       model: model.providerModelId,
@@ -165,6 +174,8 @@ export const openAiAdapter: AiProviderAdapter = {
       body.reasoning_effort = request.reasoning.effort
     }
 
+    const timeoutController = new AbortController()
+    const timeoutId = setTimeout(() => timeoutController.abort(), resolvedTimeoutMs)
     let response: Response
     try {
       response = await fetch(OPENAI_CHAT_COMPLETIONS_URL, {
@@ -175,12 +186,18 @@ export const openAiAdapter: AiProviderAdapter = {
           'content-type': 'application/json',
         },
         body: JSON.stringify(body),
+        signal: combineSignals(signal, timeoutController.signal),
       })
     } catch (error) {
-      // Network-level failures are provider-availability failures; the raw
-      // error (which could embed request details) is never surfaced.
-      void error
+      if (isAbortError(error)) {
+        if (signal?.aborted) {
+          throw error
+        }
+        throw new AiProviderTimeoutError()
+      }
       throw new AiProviderUnavailableError()
+    } finally {
+      clearTimeout(timeoutId)
     }
 
     const content = await parseResponse(response)

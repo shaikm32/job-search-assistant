@@ -1,9 +1,13 @@
 import {
   AiProviderRequestFailedError,
+  AiProviderTimeoutError,
   AiProviderUnavailableError,
   AiResponseInvalidError,
+  isAbortError,
 } from './ai.errors.js'
-import { resolveOutputTokenBudget } from './output-budget.js'
+import { combineSignals, PROVIDER_REQUEST_TIMEOUT_MS } from './provider-timeout.js'
+import { throwProviderHttpFailure } from './provider-http-errors.js'
+import { resolveOutputTokenBudget, resolveReasoningTokenBudget } from './output-budget.js'
 import type { AiStructuredOutputSupport } from '../../../shared/domain/ai.js'
 import type {
   AiModelMetadata,
@@ -31,20 +35,36 @@ import type {
  * - Structured output capability is mapped per model from the catalog's
  *   `supported_parameters` (ADR-007): `structured_outputs` advertises
  *   `json_schema`, otherwise `response_format` advertises `json_object`,
- *   otherwise `none`. At execution, `json_schema` models receive OpenAI-style
- *   strict JSON-schema enforcement built from the request's canonical schema —
- *   the same name/strictness semantics the OpenAI adapter sends (OpenRouter is
- *   OpenAI-compatible on this endpoint) — `json_object` models receive JSON
- *   mode, and `none` models receive no `response_format` at all. JSON mode
- *   guarantees valid JSON but not schema enforcement, so the adapter also
- *   instructs the model in the prompt with the required JSON shape, and the
- *   application's existing schema + domain validation pipeline rejects
- *   malformed output safely.
+ *   otherwise `prompted_json`. At execution, `json_schema` models receive
+ *   OpenAI-style strict JSON-schema enforcement built from the request's
+ *   canonical schema — the same name/strictness semantics the OpenAI adapter
+ *   sends (OpenRouter is OpenAI-compatible on this endpoint) — and
+ *   `json_object` models receive JSON mode. `prompted_json` is a satisfied
+ *   capability, not an excluded one: those models receive no `response_format`
+ *   at all and the prompt carries the required JSON shape. JSON mode guarantees
+ *   valid JSON but not schema enforcement, so for both `json_object` and
+ *   `prompted_json` the adapter also instructs the model in the prompt with the
+ *   required JSON shape, and the application's existing schema + domain
+ *   validation pipeline rejects malformed output safely.
+ * - Reasoning capability is mapped per model from `supported_parameters`
+ *   (ADR-011). OpenRouter counts hidden reasoning against `max_tokens`, so a
+ *   reasoning-capable model receives an explicit, bounded reasoning allowance
+ *   (`reasoning.max_tokens`) derived from the operation's output budget; the
+ *   operation's own `max_tokens` is never raised to compensate. A model that
+ *   does not advertise `reasoning` gets byte-identical request shapes to
+ *   before.
+ * - Provider response diagnostics (`finish_reason`, `message.refusal`) are
+ *   inspected only to choose which safe application error to raise: truncation
+ *   and refusal map to distinct user-facing messages, provider text and usage
+ *   never leave this module (AI_ARCHITECTURE.md §18, ADR-011).
  * - Discovery failures never clear a previously fetched catalog and never
  *   surface raw provider errors: they map to the safe application error model,
  *   and the AI service decides whether a failed refresh is tolerable.
  * - The credential is sent only in the `authorization` header and is never
  *   logged, stored, or included in any error.
+ * - Each chat request is bounded by `PROVIDER_REQUEST_TIMEOUT_MS` (2 min), so a
+ *   hanging provider fails fast with `AiProviderTimeoutError` instead of
+ *   consuming the whole operation budget (see `provider-timeout.ts`).
  */
 
 const OPENROUTER_CHAT_COMPLETIONS_URL = 'https://openrouter.ai/api/v1/chat/completions'
@@ -59,6 +79,7 @@ const ALL_OPERATIONS = [
   'enhance_resume',
   'reanalyze_resume',
   'generate_cover_letter',
+  'structure_resume',
 ] as const
 
 /**
@@ -84,8 +105,11 @@ interface OpenRouterModelsResponse {
  * Maps one catalog entry's declared `supported_parameters` onto the shared
  * structured-output capability contract (ADR-007). OpenRouter advertises
  * JSON-Schema enforcement as `structured_outputs` and plain JSON mode as
- * `response_format`; a model declaring neither is advertised as `none` and is
- * rejected by pre-execution capability validation for structured operations.
+ * `response_format`. A model declaring neither has no native JSON mode or
+ * schema enforcement, but structured operations are still satisfiable: the
+ * adapter carries the canonical schema in the prompt (`prompted_json`) and the
+ * application validation pipeline enforces conformance. OpenRouter discovery
+ * therefore never reports `none`.
  */
 export function mapOpenRouterStructuredOutput(
   entry: OpenRouterModelEntry,
@@ -99,7 +123,21 @@ export function mapOpenRouterStructuredOutput(
   if (parameters.includes('response_format')) {
     return 'json_object'
   }
-  return 'none'
+  return 'prompted_json'
+}
+
+/**
+ * Maps one catalog entry's declared `supported_parameters` onto the shared
+ * reasoning capability contract (ADR-011). OpenRouter advertises the ability to
+ * accept translated reasoning configuration as `reasoning`; a model that does
+ * not declare it is reported as reasoning-incapable and is never sent a
+ * reasoning allowance.
+ */
+export function mapOpenRouterReasoningSupport(entry: OpenRouterModelEntry): boolean {
+  const parameters = Array.isArray(entry.supported_parameters)
+    ? entry.supported_parameters.filter((parameter): parameter is string => typeof parameter === 'string')
+    : []
+  return parameters.includes('reasoning')
 }
 
 /** Maps one OpenRouter catalog entry to provider-owned model metadata. */
@@ -126,7 +164,7 @@ function toModelMetadata(entry: OpenRouterModelEntry): AiModelMetadata | null {
     // (ADR-007) and enforced by backend capability validation.
     supportedOperations: ALL_OPERATIONS,
     structuredOutput: mapOpenRouterStructuredOutput(entry),
-    reasoning: false,
+    reasoning: mapOpenRouterReasoningSupport(entry),
     contextCapacity,
   }
 }
@@ -178,44 +216,78 @@ function resolveModel(modelId: string): AiModelMetadata | null {
   return discoveredModels.find((model) => model.modelId === modelId) ?? null
 }
 
-/** Translates non-OK model-API/chat responses into safe application errors. */
-function translateHttpFailure(status: number): never {
-  if (status === 429 || status >= 500) {
-    throw new AiProviderUnavailableError()
-  }
-  if (status === 401 || status === 403) {
-    throw new AiProviderRequestFailedError(
-      'The AI provider rejected the API key. Check your API key in Settings and try again.',
-    )
-  }
-  throw new AiProviderRequestFailedError()
+/** Safe user-facing message for a response cut off by the completion budget. */
+const TRUNCATED_RESPONSE_MESSAGE =
+  'The AI model ran out of response space before it finished. Please try again or choose a different model.'
+
+/** Safe user-facing message for a provider-side refusal of the request. */
+const REFUSED_RESPONSE_MESSAGE =
+  'The selected AI model declined this request. Please try again or choose a different model.'
+
+interface OpenRouterChatMessage {
+  content?: unknown
+  refusal?: unknown
 }
 
 interface OpenRouterChatChoice {
-  message?: { content?: string | null }
+  message?: OpenRouterChatMessage
+  finish_reason?: unknown
 }
 
 interface OpenRouterChatResponse {
   choices?: OpenRouterChatChoice[]
+  /**
+   * Usage accounting. Deliberately never read, logged, or surfaced: it exists
+   * only to document the shape the provider returns (ADR-011).
+   */
+  usage?: unknown
 }
 
-async function parseChatResponse(response: Response): Promise<string> {
+interface ParsedChatResponse {
+  content: string
+  /** Provider stop reason, used only to pick a safe application error. */
+  finishReason: string | null
+}
+
+/**
+ * Parses an OpenRouter chat response into the canonical content string plus the
+ * provider's stop reason (ADR-011). Diagnostics are used only to select a safe
+ * application error: a refusal surfaces a distinct message, and a response cut
+ * off by the completion budget (`finish_reason: 'length'`, typically
+ * `content: null`) reports truncation rather than a generic malformed-response
+ * failure. Provider refusal text, `finish_reason` and usage never reach a
+ * caller, log, or wire response, and a truncated or missing payload is still an
+ * error — never partial output.
+ */
+async function parseChatResponse(response: Response): Promise<ParsedChatResponse> {
   if (response.ok) {
     let body: OpenRouterChatResponse
     try {
       body = (await response.json()) as OpenRouterChatResponse
-    } catch {
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error
+      }
       throw new AiResponseInvalidError()
     }
-    const content = body.choices?.[0]?.message?.content
+    const choice = body.choices?.[0]
+    const finishReason =
+      typeof choice?.finish_reason === 'string' ? choice.finish_reason : null
+    const refusal = choice?.message?.refusal
+    if (typeof refusal === 'string' && refusal.trim().length > 0) {
+      throw new AiResponseInvalidError(REFUSED_RESPONSE_MESSAGE)
+    }
+    const content = choice?.message?.content
     if (typeof content !== 'string' || content.length === 0) {
-      throw new AiResponseInvalidError()
+      throw new AiResponseInvalidError(
+        finishReason === 'length' ? TRUNCATED_RESPONSE_MESSAGE : undefined,
+      )
     }
-    return content
+    return { content, finishReason }
   }
   // Non-OK responses are translated by status into safe categories; the raw
   // provider body is never surfaced (it can carry request/account details).
-  translateHttpFailure(response.status)
+  throwProviderHttpFailure('openrouter', response.status)
 }
 
 export const openRouterAdapter: AiProviderAdapter = {
@@ -224,6 +296,7 @@ export const openRouterAdapter: AiProviderAdapter = {
   descriptor: {
     id: 'openrouter',
     displayName: 'OpenRouter',
+    description: 'One gateway for models from many providers.',
     credentialLabel: 'OpenRouter API key',
   },
 
@@ -248,7 +321,7 @@ export const openRouterAdapter: AiProviderAdapter = {
     }
 
     if (!response.ok) {
-      translateHttpFailure(response.status)
+      throwProviderHttpFailure('openrouter', response.status)
     }
 
     let body: unknown
@@ -266,7 +339,12 @@ export const openRouterAdapter: AiProviderAdapter = {
     }
   },
 
-  async execute(request: AiRequest, credential: string): Promise<AiResponse> {
+  async execute(
+    request: AiRequest,
+    credential: string,
+    signal?: AbortSignal,
+    timeoutMs?: number,
+  ): Promise<AiResponse> {
     const model = resolveModel(request.modelId)
     if (!model) {
       throw new AiProviderRequestFailedError(
@@ -274,10 +352,12 @@ export const openRouterAdapter: AiProviderAdapter = {
       )
     }
     const startedAt = Date.now()
+    const maxTokens = resolveOutputTokenBudget(request.operation, model.contextCapacity)
+    const resolvedTimeoutMs = timeoutMs ?? PROVIDER_REQUEST_TIMEOUT_MS
 
     const body: Record<string, unknown> = {
       model: model.providerModelId,
-      max_tokens: resolveOutputTokenBudget(request.operation, model.contextCapacity),
+      max_tokens: maxTokens,
       messages: [
         { role: 'system', content: request.systemPrompt },
         {
@@ -292,9 +372,10 @@ export const openRouterAdapter: AiProviderAdapter = {
     // name/strictness semantics the OpenAI adapter sends, since OpenRouter is
     // OpenAI-compatible on this endpoint; `json_object` models receive JSON
     // mode (no schema enforcement: the prompt carries the required shape and
-    // the application validates the parsed result); `none` models receive no
-    // response_format at all and are rejected earlier by capability validation
-    // for structured operations.
+    // the application validates the parsed result); `prompted_json` models are
+    // a satisfied capability and receive no response_format at all — the
+    // prompt instruction appended above carries the required shape and the
+    // application validation pipeline enforces conformance.
     if (model.structuredOutput === 'json_schema') {
       body.response_format = {
         type: 'json_schema',
@@ -307,9 +388,19 @@ export const openRouterAdapter: AiProviderAdapter = {
     } else if (model.structuredOutput === 'json_object') {
       body.response_format = { type: 'json_object' }
     }
-    // Reasoning intent translation is not implemented for OpenRouter in this
-    // build; the adapter ignores the intent rather than failing (§16).
+    // Reasoning is bounded, not disabled (ADR-011): on this provider
+    // `max_tokens` covers hidden reasoning plus the canonical response, so a
+    // model that advertises `reasoning` receives an explicit allowance derived
+    // from the operation's output budget. A cap is sent rather than
+    // `effort: 'none'` because reasoning is mandatory on some models and a cap
+    // is honoured by upstreams that reject disabling it. `max_tokens` itself is
+    // unchanged, and models without the capability get an untranslated request.
+    if (model.reasoning) {
+      body.reasoning = { max_tokens: resolveReasoningTokenBudget(maxTokens) }
+    }
 
+    const timeoutController = new AbortController()
+    const timeoutId = setTimeout(() => timeoutController.abort(), resolvedTimeoutMs)
     let response: Response
     try {
       response = await fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
@@ -320,19 +411,31 @@ export const openRouterAdapter: AiProviderAdapter = {
           'content-type': 'application/json',
         },
         body: JSON.stringify(body),
+        signal: combineSignals(signal, timeoutController.signal),
       })
     } catch (error) {
-      void error
+      if (isAbortError(error)) {
+        if (signal?.aborted) {
+          throw error
+        }
+        throw new AiProviderTimeoutError()
+      }
       throw new AiProviderUnavailableError()
+    } finally {
+      clearTimeout(timeoutId)
     }
 
-    const content = await parseChatResponse(response)
+    const { content, finishReason } = await parseChatResponse(response)
 
     let output: unknown
     try {
       output = JSON.parse(content)
     } catch {
-      throw new AiResponseInvalidError()
+      // A truncated payload cannot be parsed; report that honestly instead of
+      // the generic malformed-response message (ADR-011).
+      throw new AiResponseInvalidError(
+        finishReason === 'length' ? TRUNCATED_RESPONSE_MESSAGE : undefined,
+      )
     }
 
     return {
