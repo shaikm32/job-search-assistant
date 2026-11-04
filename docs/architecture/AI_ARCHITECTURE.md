@@ -202,6 +202,18 @@ The abstraction exposes only:
 
 Settings may return safe metadata such as the configured providers and their configured/not-configured state, never plaintext credentials.
 
+### Read-time credential guard
+
+A stored credential is read verbatim: neither the credential store nor the AI
+service trims, normalises, or re-encodes it, so the value transmitted to the
+provider is byte-identical to the value the user stored. A value with real
+content is never altered, even when it has outer whitespace.
+
+A whitespace-only stored value is treated as not configured at read time, so the
+safe `AiNotConfiguredError` path runs before any provider request. This is a
+read-time guard only: saving a credential performs no live provider validation,
+and the guard never rewrites the stored value.
+
 ### Platform behaviour and dependency implications
 
 - The mechanism differs per platform, so credential storage must be implemented behind the abstraction and must degrade explicitly rather than silently.
@@ -318,7 +330,9 @@ prompt targets 250-350 words with a greeting, opening, two or three grounded
 qualification paragraphs, closing, and sign-off separated by blank lines.
 Domain validation accepts 200-400 words and at least three non-empty paragraph
 blocks; out-of-bounds or dense output is rejected as a safe
-`AiResponseInvalidError` and is retryable (no automatic provider retry).
+`AiResponseInvalidError` and is retryable by the user (an invalid AI response is
+never retried automatically; transient provider failures are retried separately
+— see §18).
 
 ## 7. Canonical Contracts
 
@@ -912,9 +926,11 @@ adapter so the user-facing message is actionable and not every provider error is
 reported as an API-key rejection: 401 invalid credentials, 403 forbidden
 access, 402 insufficient credits/quota, 404 model/provider route unavailable,
 429 rate limited, 408/5xx provider unavailable, and other 4xx request rejected.
-Only the provider, HTTP status, and sanitized category may be recorded for
-diagnostics; credentials, authorization headers, raw request bodies, and raw
-provider response text are never logged.
+The permitted diagnostic field set is defined normatively in "Bounded provider
+retries" and "Diagnostics" below; this paragraph only fixes the failure
+classification. At minimum, only the provider, HTTP status, and sanitized
+category are recorded for the HTTP failure itself; credentials, authorization
+headers, raw request bodies, and raw provider response text are never logged.
 
 A blocking role mismatch is not a provider failure: Generate Suggestions and
 Enhance Resume refuse it as a request validation error (HTTP 400) before any
@@ -930,6 +946,70 @@ message, and a provider refusal maps to a "declined this request" message.
 `finish_reason`, refusal text and usage data never reach the client or logs.
 Strict schema and domain validation is unchanged: a truncated, partial or
 malformed payload is always an error, never a partial result.
+
+### Bounded provider retries (ADR-013)
+
+Transient provider failures are retried centrally by `executeAiRequest` — never
+by an adapter and never by the execution engine. Adapters remain single-shot.
+
+- **Attempts.** At most two total attempts per provider request (the initial
+  attempt plus one retry), with an abort-aware 250 ms pause between them and no
+  exponential backoff loop.
+- **Retried categories.** HTTP 408, any 5xx, and pre-header transport failures.
+  A transport failure (for example a connection, DNS, or TLS failure before any
+  response headers) carries `provider_unavailable` with no provider status and
+  is retryable.
+- **Never retried.** 429 rate limits, 401/402/403/404 and other 4xx responses,
+  malformed or invalid AI responses, schema/domain validation failures, provider
+  request timeouts, and aborts. A cancelled operation is rethrown unchanged and
+  never retried (ADR-010).
+- **Predicate.** The sanitized `retryable` classification is the only retry
+  predicate; it is populated by the central HTTP translation point and by the
+  adapters' pre-header transport sites. `AiProviderUnavailableError` for a rate
+  limit remains a provider-unavailable failure (HTTP 503) but is not retryable.
+- **Deadline.** A retry starts only when a full provider request bound
+  (`PROVIDER_REQUEST_TIMEOUT_MS`, 120 s) plus the retry delay still fits inside
+  the operation's remaining deadline. The operation deadline is exposed on the
+  step context and threaded through every runner, including the nested
+  `structure_resume` call, so timeout plus retry cannot exceed the five-minute
+  operation bound. Validation and credential resolution happen once, outside
+  the attempt loop; when the attempts are exhausted the last error is thrown.
+- **Provider charges.** A retried request may be billed or counted by the
+  provider more than once. Retrying is therefore restricted to failures where
+  an immediate second attempt is safe and bounded.
+
+### Diagnostics
+
+Sanitized, structured records are written with the existing `console.error`
+convention. One record is written per failed provider attempt, where the attempt
+outcome is known (`executeAiRequest`), so adapters stay free of process-level
+logging and the same failure is never reported twice. Provider request timeouts
+are no longer silent: they surface as an attempt record with the
+`provider_timeout` category. A terminal record is written by the engine for
+`failed` and `timed_out` operations.
+
+Permitted fields:
+
+- attempt record: operation, provider, model identifier, attempt/max, provider
+  HTTP status or `none`, sanitized failure category, outcome (`retry`/`final`),
+  error class, and duration;
+- terminal record: operation id, operation, state, in-flight step id, error
+  class, `applicationStatus`, `providerStatus`, and duration.
+
+A terminal operation record carries both status layers as distinct fields:
+`applicationStatus` is the application's own HTTP status code (the
+`ApiError.statusCode` the API returns, for example 502 for a provider request
+failure), and `providerStatus` is the original provider HTTP status (for example
+401). Each is rendered as `none` when unavailable. `providerStatus` is present
+only when an HTTP response was received from the provider; a transport failure,
+a provider request timeout, a non-`ApiError` failure, and an internally
+invalidated operation therefore record `providerStatus=none`. The attempt
+record's `status=` field keeps its existing meaning: the provider HTTP status.
+
+Never logged: API keys, credentials or authorization headers, resume or job
+description text, prompts or request bodies, raw provider response bodies or
+`statusText`, `finish_reason`/refusal/usage, provider URLs, or unfiltered error
+objects. A non-`ApiError` failure is recorded by its error shape only.
 
 Never return raw provider SDK errors containing credentials or sensitive request information.
 

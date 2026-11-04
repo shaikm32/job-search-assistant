@@ -1019,7 +1019,9 @@ applies against that untouched base, so untouched sections stay byte-identical
 and the change summary is derived rather than model-written. Settings is
 presented as a **Providers** page where each supported provider can be connected,
 have its API key replaced, be renamed (display label only), or be removed, with
-credentials still held by the Windows Credential Manager.
+credentials held only in OS-native stores — Windows Credential Manager
+(in-process via `koffi`), macOS Keychain (`security`), and Linux Secret Service
+(`secret-tool`) — namespaced per provider, with no plaintext fallback.
 
 Remaining Resume Enhancer work is deferred and separately scoped: DOCX/PDF
 generation and download, Application carry-over, and Recent Enhancement revisit
@@ -1043,7 +1045,8 @@ milestone above.
 - **Implemented:**
   - `scripts/wait-for-backend.ts`: `waitForBackend({ url, intervalMs, timeoutMs })`
     polls `GET /api/health` until `response.ok`, logs progress, and throws on
-    timeout; CLI entry behind `import.meta.main` exits 1 on failure.
+    timeout; CLI entry behind `import.meta.main` exits 1 on failure (later
+    replaced with a portable `isDirectExecution` check).
   - `src/api/retry.ts`: `isTransientApiError`, `sleep`, and `retryTransient`
     with bounded sequential exponential backoff; transient network errors
     (`statusCode === null`) retry, genuine API errors rethrow on attempt 1,
@@ -1068,4 +1071,99 @@ milestone above.
   pre-existing warnings, none in new files); `npm run build` pass; `npx tsx
   --test` 183 pass / 0 fail (includes 9 new tests: 6 api-retry, 3
   startup-readiness).
+- **Status:** Complete.
+
+### AI provider reliability — bounded retry, diagnostics, deadline, terminal state
+
+- **Objective:** Make transient provider failures recoverable, make failures
+  attributable from sanitized logs, bound the provider timeout over the whole
+  response lifecycle, and stop terminal operations from reporting an `active`
+  step. Prompted by an `analyze_resume` investigation; no product behavior or
+  wire contract changed.
+- **Implemented:**
+  - `ai.errors.ts`: optional sanitized diagnostics on the translated provider
+    errors (`providerStatus`, `failureCategory`, `retryable`), plus
+    `createProviderTransportFailureError()` for pre-header transport failures
+    (category `provider_unavailable`, no status, retryable). Messages and HTTP
+    status codes are unchanged.
+  - `provider-http-errors.ts`: populates the diagnostics at the single HTTP
+    translation point, exposes `isRetryableProviderFailure()`, marks 429
+    non-retryable while keeping its provider-unavailable class (503) and
+    message, and no longer logs (the central executor owns diagnostics).
+  - `ai.service.ts` `executeAiRequest`: bounded retry (2 total attempts,
+    abort-aware 250 ms delay, no backoff), consuming the `retryable`
+    classification. Selection validation and credential resolution happen once.
+    Aborts are rethrown unchanged; the last error is thrown when attempts are
+    exhausted. Emits one sanitized record per failed attempt (operation,
+    provider, model, attempt/max, status or `none`, category, outcome, error
+    class, duration).
+  - All five adapters: the request-bound `AbortController` now covers headers
+    **and** body read/parse, with `clearTimeout` in a `finally` wrapping parsing;
+    a non-caller abort during body read maps to `AiProviderTimeoutError`.
+    Adapters remain single-shot.
+  - `provider-timeout.ts`: exported `PROVIDER_MAX_ATTEMPTS` (2) and
+    `PROVIDER_RETRY_DELAY_MS` (250); no timeout values changed.
+  - `ai-operation.engine.ts`: exposes the absolute operation deadline on the
+    step context, writes a terminal `failed`/`timed_out` record (operation id,
+    operation, state, in-flight step, error class, status code or `none`,
+    duration), and resets the in-flight step to `pending` on `failed`,
+    `timed_out` and invalidation. `cancelled` keeps its snapshot; late results
+    are still discarded.
+  - Runners (`analysis`, `suggestions`, `enhance`, `reanalysis`,
+    `cover-letter`) and the nested `structure_resume` path in
+    `base-resume.service.ts` forward the deadline to `executeAiRequest`.
+- **Tests:** new `tests/ai-provider-retry.test.ts` (16 tests: 503→503,
+  503→success, 400, 429, transport retry, no retry for a provider timeout with
+  its `provider_timeout` record, abort during the retry delay, abort during the
+  first attempt (zero attempt records), abort-error (zero attempt records),
+  insufficient remaining deadline, deadline fits a retry, worst-case invariant,
+  diagnostics safety, no retry for untranslated raw errors, the 401 terminal
+  record carrying `providerStatus` + `invalid_credentials`, and the
+  byte-for-byte credential pass-through). Extended
+  `ai-execution` (failed/timed-out step reset, terminal record),
+  `ai-credential-management` (408/502/503/504/400/418 classification, transport
+  attempt record), `provider-timeout` (body-read timeout, adapter single-shot,
+  timeout diagnostics), `m9d-analysis` (503→valid completes without duplicated
+  steps) and `ai-operation-cancel` (cancelled snapshot preserved).
+- **Docs:** `AI_ARCHITECTURE.md` §6 (invalid-response no-retry clarification) and
+  §18 (bounded retry policy, deadline rule, diagnostics fields),
+  `AI_EXECUTION_AND_PROGRESS.md` §5/§8 (terminal step state), and new
+  `ADR-013-bounded-provider-retry.md` (including the possible provider charges
+  on a retried request).
+- **Validation:** `npx tsx --test tests/*.test.ts` 475 pass / 0 fail;
+  `npx oxlint` 0 errors; `npx tsc -p tsconfig.server.json` pass;
+  `npx tsc -b tsconfig.app.json tsconfig.node.json` pass; `npm run build` pass.
+- **Status:** Complete.
+
+### OpenRouter authentication diagnostics and credential guard
+
+- **Objective:** Explain a reported 401 on a key that worked elsewhere, and make
+  credential and provider-status failures attributable from sanitized logs
+  without exposing secrets.
+- **Implemented:**
+  - `ai.errors.ts`: shared `readProviderErrorDiagnostics`, used by the executor,
+    the execution engine, and model discovery, so the same sanitized fields are
+    read at every boundary.
+  - Terminal operation record separates `applicationStatus` from
+    `providerStatus`, so an application-level failure is distinguishable from
+    the provider's own response status.
+  - The model-discovery failure record carries `providerStatus` and
+    `failureCategory` alongside its existing fields.
+  - `readProviderCredential` treats a whitespace-only stored value as not
+    configured before any request is made, while the credential stores remain
+    byte-faithful (no trimming or rewriting of stored values).
+  - No live key validation at save time; saving a credential still does not
+    contact the provider.
+- **Investigation verdict:** A secret-free SHA-256 fingerprint comparison showed
+  that the application and the other tool were not using the same credential
+  bytes. The request path (endpoint, Bearer header, verbatim credential
+  transport) was identical, so the 401 was a credential mismatch rather than a
+  code defect. No credential values, prefixes, lengths, or fingerprints are
+  recorded here.
+- **Tests:** the 401 dual-status terminal record, the discovery failure-record
+  fields, the whitespace-only guard producing zero fetch and attempt records, the
+  Windows outer-whitespace byte round-trip, and credential wire parity; full
+  suite 475 pass.
+- **Docs:** `AI_ARCHITECTURE.md` §4 (read-time credential guard) and §18
+  (diagnostics fields).
 - **Status:** Complete.

@@ -115,6 +115,14 @@ type OperationState =
 `cancelled` is terminal and carries no error: `result` and `error` stay null and
 the reported steps remain a snapshot of the progress reached before the stop.
 
+`failed` and `timed_out` never report an `active` step. When an operation fails
+or times out, the in-flight step is reset to `pending` before `currentStep` is
+cleared; steps that already completed keep their `completed` state, and no new
+step state is introduced (`pending`/`active`/`completed` stay the contract).
+This is why the failure view can hide the step list without leaving a stuck
+active indicator. `cancelled` deliberately keeps its pre-stop snapshot,
+including a step that was `active` at the stop.
+
 UI:
 
 ```text
@@ -192,6 +200,12 @@ On timeout:
 5. present a retry/restart action
 
 A late provider response must never overwrite a timed-out or discarded session.
+
+The terminal `timed_out` transition follows the same step rule as `failed`: the
+in-flight step becomes `pending`, completed steps are preserved, and
+`currentStep` is cleared, so a timed-out operation never reports an `active`
+step. A late result that still arrives is discarded because the operation is
+already terminal.
 
 ## 9. Workflow Lock
 
