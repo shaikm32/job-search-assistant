@@ -103,6 +103,26 @@ because the feature specification requires the populated form to remain visible
 but non-interactive. Confirmation dialogs keep the existing `.dialog-backdrop`
 convention (dimmed, no backdrop blur) and stack above the progress dialog.
 
+## Design tokens and surface opacity
+
+The visual system is defined once in `src/index.css` as CSS custom properties with
+a dark and a light value for every token; features consume tokens instead of
+literal colors.
+
+Overlay tokens (`--surface`, `--accent-bg`) are translucent by design: they are
+meant to sit on top of an existing glass surface. A component that floats over
+arbitrary page content must use a dedicated floating-surface token
+(`--glass-floating`, alpha 0.99 in both themes) instead. A 5% overlay used as a
+popover background lets the text behind it read through the control, and
+intermediate values (0.94-0.97) still ghost; the floating token is deliberately
+near-opaque while keeping the sheen, blur, border, and shadow that preserve the
+glass language.
+
+The model selector listbox (`.combobox [role="listbox"]`) follows this rule: it
+stacks above page content with `z-index: 20`, is anchored to its field with
+absolute positioning, scrolls internally, and must stay readable even when
+`backdrop-filter` is unsupported.
+
 ## Application shell
 
 Dashboard is the default screen.

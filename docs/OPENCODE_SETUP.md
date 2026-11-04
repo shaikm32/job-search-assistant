@@ -14,7 +14,7 @@ The repository uses a small multi-agent setup so that task execution is
 coordinated, role-specific, and proportional to risk. A coordinating agent
 (the Orchestrator) routes work to specialized subagents instead of running a
 fixed pipeline. The goal is minimum sufficient involvement for each task while
-keeping a single bounded source of task state (`.task.md`).
+keeping a single bounded source of task state (`.task.md`). That file is local working state, not a project artifact: it is gitignored and is never committed, so it cannot pollute the product history.
 
 ## 2. Agents and Responsibilities
 
