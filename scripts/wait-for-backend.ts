@@ -1,3 +1,6 @@
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -45,7 +48,28 @@ export async function waitForBackend({
   throw lastError ?? new Error(`Backend did not become ready at ${url} within ${timeoutMs}ms`)
 }
 
-if (import.meta.main) {
+/**
+ * Detects direct CLI execution without relying on `import.meta.main`, which is
+ * not available on Node 22.13 (the supported floor). Compares the module URL
+ * with `process.argv[1]`, case-insensitively on case-insensitive Windows paths,
+ * and never throws on an invalid URL or path.
+ */
+export function isDirectExecution(moduleUrl: string, entryArg: string | undefined): boolean {
+  if (!entryArg) {
+    return false
+  }
+  try {
+    const modulePath = resolve(fileURLToPath(moduleUrl))
+    const entryPath = resolve(entryArg)
+    return process.platform === 'win32'
+      ? modulePath.toLowerCase() === entryPath.toLowerCase()
+      : modulePath === entryPath
+  } catch {
+    return false
+  }
+}
+
+if (isDirectExecution(import.meta.url, process.argv[1])) {
   try {
     await waitForBackend()
   } catch (error) {

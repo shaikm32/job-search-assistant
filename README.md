@@ -1,224 +1,334 @@
 # Job Search Assistant
 
-A local-first job-search workspace for managing applications, contacts, and
-documents, with an AI **Resume Enhancer** that analyzes your resume against a job
-description and applies targeted, reviewable edits.
+**A local-first workspace for running a job search as structured data — with a
+bring-your-own-key AI Resume Enhancer that proposes reviewable, validated edits
+instead of rewriting your resume.**
 
-Most job-search tools are cloud services that want your resume, your history, and
-your API keys. This project keeps the workspace on your machine: a local Node.js
-backend, a local SQLite database, local file storage, and your own AI provider
-credentials held in the operating system's secure credential store.
+A job search generates a lot of state: which applications went out and where they
+stand, which recruiters and hiring managers you spoke to, which resume version was
+used, and what changed between revisions. That state is treated here as structured
+data, not as a pile of documents, spreadsheets, or an account held somewhere else.
 
-> **Status:** Milestone 9 (Resume Enhancer) is implemented. The application runs
-> as a local desktop-style web app on `localhost`. See
-> [Current status](#current-status) for what is and is not built yet.
+Job Search Assistant keeps all of it on your machine. A Node.js backend and a React
+UI run on `localhost`, structured data lives in SQLite, documents live on disk, and
+AI credentials live in your operating system's credential store. AI is optional and
+bring-your-own-key: you connect the provider and model you trust, and a request is
+made only when you explicitly start an operation.
+
+It is built for individual job seekers; the AI layer is also a concrete example of a
+multi-provider workflow with validation, cancellation, and bounded failure handling.
+
+> **Status:** the Resume Enhancer milestone is complete. What is implemented,
+> deferred, and out of scope is listed under
+> [Roadmap and current status](#roadmap-and-current-status).
 
 ## Screenshots
 
-All screenshots use a synthetic demo dataset. No real resume, application, or
-credential data is shown.
+Screenshots use a synthetic demo dataset. No real resume, application, or credential
+data is shown.
 
-**Dashboard** - computed pipeline, recent applications, and networking activity.
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/assets/Dashboard.png" alt="Dashboard with four KPI cards, pipeline counts by application stage, recent applications, and networking metrics" width="100%" />
+      <br />
+      <sub><b>Dashboard</b> — KPIs, pipeline by stage, recent applications, and networking activity, all computed at read time.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/assets/Applications.png" alt="Applications list with search, stage and location filters, stage badges, and an attached resume" width="100%" />
+      <br />
+      <sub><b>Applications</b> — search and filter by stage or location; each row carries its stage and attached documents.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/assets/People.png" alt="People screen with search, connection status filter, and people rows showing person type and status badges" width="100%" />
+      <br />
+      <sub><b>People</b> — recruiters, hiring managers, and networking contacts with connection status.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/assets/Resume_Enhancer.png" alt="Resume Enhancer intake with resume upload, AI provider and model selectors, and a job description field" width="100%" />
+      <br />
+      <sub><b>Resume Enhancer</b> — resume intake, explicit provider and model selection, and the target job description.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center" valign="top">
+      <img src="docs/assets/Settings.png" alt="Settings Providers page showing a connected provider with an Update key action and popular providers with Connect actions" width="60%" />
+      <br />
+      <sub><b>Settings → Providers</b> — connect, replace, rename, or remove AI providers.</sub>
+    </td>
+  </tr>
+</table>
 
-![Dashboard showing application totals, pipeline stages, recent applications, and networking metrics](docs/assets/dashboard.jpg)
+## Key features
 
-**Resume Enhancer** - resume upload, explicit provider and model selection, and job-description intake.
+**Dashboard.** An overview computed from your data rather than stored: total
+applications, active applications (excluding Rejected and Withdrawn), interviews
+(Interview 1, Interview 2, Final Interview), offers, pipeline counts by stage, recent
+applications, and networking totals including an acceptance rate that stays empty
+until at least one request has been sent.
 
-![Resume Enhancer intake screen with resume dropzone, provider and model selectors, and job description field](docs/assets/resume-enhancer-intake.png)
+**Application tracking.** Company, job title, location, job URL, date applied, current
+stage, and notes, with a search box plus stage and location filters. Each application
+can carry its own resume and cover-letter attachments. Stages: Applied, Recruiter
+Screening, Interview 1, Interview 2, Final Interview, Offer, Rejected, Withdrawn.
 
-**Providers** - connected and available AI providers with per-provider API-key management.
+**People.** Recruiters, hiring managers, employees, and networking contacts, each with
+company, job title, person type, connection status (Identified, Request Sent,
+Connected, Not Connected), LinkedIn URL, request-sent date, and notes, searchable and
+filterable by status.
 
-![Provider management in Settings listing a connected provider and popular providers](docs/assets/settings-providers.png)
+**Documents.** Application attachments accept PDF, DOC, and DOCX (15 MB decoded
+limit). Files are written to disk beside the database, and SQLite keeps their
+metadata. The API exposes only wire-safe metadata, with no filesystem paths. The
+Resume Enhancer separately accepts PDF or DOCX uploads, or pasted text, and
+converts an upload to plain text at AI operation time.
 
-## The problem
+**Resume Enhancer.** A single-screen workflow: resume plus job description plus an
+explicit provider and model produce a structured analysis, targeted suggestions, an
+enhanced resume, a generated cover letter, and re-analysis. Long-running work runs on
+the backend with live stage progress and a Stop control that actually cancels.
 
-Job searching produces a lot of state that is awkward to keep in documents and
-spreadsheets: which applications went out, which resume version was used, who
-referred you, and what changed between resume revisions. It also involves a
-high-stakes writing task, tailoring a resume to a specific job posting, where
-generic AI chat is hard to trust because it rewrites everything at once.
+**AI provider management.** Connect a provider with your own API key, replace a key,
+rename a provider's display label, or remove a provider and its credential
+individually. Provider and model are chosen per operation, with no hidden global
+default.
 
-This project treats the job search as structured data, and treats AI resume
-editing as a reviewable patch rather than a blind rewrite.
+## AI capabilities
 
-## Features
+Every AI operation is explicit and reviewable. The backend owns all provider calls;
+the browser never sees a credential or a raw provider response.
 
-**Workspace**
+### Analysis and job-description matching
 
-- **Applications**: company, role, status, dates, source, notes, and per-application documents.
-- **Networking**: people and companies you are in contact with, linked to applications.
-- **Documents**: resume and cover-letter attachments stored on disk (PDF, DOC, DOCX) and extracted to text for AI use.
-- **Dashboard**: computed overview of applications, activity, and recent work.
+- **Structured analysis** of a resume against one specific job description: overall
+  match, an AI-estimated ATS score, key strengths, key gaps, and a role-alignment
+  assessment that can flag a genuine role mismatch instead of forcing an enhancement.
+- **Suggestions** are generated for the gaps the analysis identified, not for generic
+  resume advice.
+- **Cover-letter generation** and **re-analysis** work from the same resume and job
+  context within a session.
 
-**Resume Enhancer**
+### Enhancement as a validated patch
 
-- Paste a resume or upload a PDF or DOCX, add the job description, then choose an AI provider and model.
-- **Structured analysis**: overall match, an AI-estimated ATS score, key strengths, key gaps, and a role-alignment assessment that can flag a genuine role mismatch instead of forcing an enhancement.
-- **Suggestion generation** for specific improvement areas.
-- **Deterministic-first enhancement**: each session has one immutable canonical *BaseResume*; the model returns a targeted *ResumePatch* that the server validates and applies against that untouched base, so sections you did not ask to change stay byte-identical.
-- **Cover-letter generation**, **re-analysis**, and a results view with a derived change summary and copy actions.
-- **Long-running operations** run server-side with polling progress, live stage reporting, navigation lock while processing, and a real **Stop** that aborts the in-flight provider request and discards the incomplete attempt.
+This is the core design decision behind the Resume Enhancer:
 
-**Settings: Providers**
+1. Each session has exactly one immutable **BaseResume** — the canonical text the
+   model is allowed to work from.
+2. The model does not return a rewritten document. It returns a targeted
+   **ResumePatch** describing specific edits.
+3. The server validates that patch and applies it against the untouched base. Any
+   section you did not ask to change stays byte-identical.
+4. The change summary you see is derived from the patch that was actually applied,
+   not written by the model.
 
-- Connected providers and available providers in one page, built from the canonical provider registry.
-- Connect a provider with an API key, replace an existing key, rename a provider's display label, or remove a provider (credential and configuration) individually.
-- API keys are never displayed after saving and never leave the secure credential store.
+In plain terms: the AI proposes edits, the server decides what is structurally valid,
+and the original base text is preserved, so nothing is silently replaced.
 
-## Architecture
+### Multi-provider architecture
 
-A local-first modular monolith: one Node.js process serving a JSON API, one React
-single-page app, and one SQLite database. No cloud services, no accounts, and no
-background workers.
-
-```text
-src/                     React SPA (features, routing, design system)
-  features/              applications, people, dashboard, resume-enhancer, settings
-  components/common/     shared form, dialog, model-select and status components
-server/
-  http/                  small HTTP layer (routing, JSON, body limits, error mapping)
-  modules/               feature modules, each with routes/service/repository
-    ai/                  provider adapters, credential stores, execution engine
-    enhancements/        BaseResume, ResumePatch, resume text extraction
-  database/migrations/   ordered SQL migrations applied at startup
-shared/domain/           contracts shared by client and server
-tests/                   node:test suites (backend, contracts, SSR component tests)
-docs/                    product specification, architecture, ADRs, status history
-```
-
-**Stack**
-
-| Layer | Choice |
-| --- | --- |
-| Frontend | React 19, React Router, TypeScript, Vite, hand-written CSS with a dark/light design-token system |
-| Backend | Node.js 22.5+, TypeScript, `node:http`, `node:sqlite` |
-| Persistence | SQLite with schema migrations, plus local files for application and enhancement artifacts |
-| Document extraction | `unpdf` (PDF), `mammoth` (DOCX) |
-| Secure credentials | OS-native stores via `koffi` (Windows Credential Manager), macOS Keychain, Linux Secret Service |
-| Tests | `node:test` via `tsx`, including server-rendered and jsdom component tests |
-
-Request flow: browser to Vite dev proxy to local backend to feature module to
-SQLite or local file storage. AI calls leave the machine only from the backend,
-and only when you start an AI operation.
-
-## AI provider integration
-
-AI is bring-your-own-key and provider-agnostic. The backend defines one provider
-contract; adapters implement it, so features never depend on a specific vendor.
+One provider contract, five adapters, so no feature depends on a specific vendor:
 
 | Provider | Integration |
 | --- | --- |
-| OpenAI | direct chat-completions adapter |
+| OpenAI | chat-completions adapter |
 | Anthropic | messages API adapter |
 | Google Gemini | generate-content adapter |
 | DeepSeek | OpenAI-compatible chat adapter |
 | OpenRouter | gateway with dynamic model discovery and capability mapping, including a prompted-JSON tier so free and limited models remain selectable |
 
-- **Per-operation selection.** The provider and model are chosen per operation (analysis, enhancement, cover letter, and so on). There is no silent global default and no "first model" fallback; an unconfigured or stale choice produces a safe start error.
-- **Capability-aware requests.** Adapters declare structured-output support and reasoning capability; the server picks the request shape (native structured output, prompted JSON, or plain text) and bounds reasoning so a reasoning model cannot consume the whole completion budget.
-- **Provider failures are normalized.** HTTP failures, timeouts, truncation, refusals, and invalid responses become safe application errors. Raw provider bodies, headers, and credentials are never surfaced or logged.
-- **Bounded requests.** Every provider request has its own timeout and is abortable, so a hanging provider fails fast and **Stop** works at every stage.
-- No RAG or vector search: prompts are built from the resume, the job description, and the operation's structured context.
+- **Explicit selection.** Provider and model are chosen per operation. An
+  unconfigured or stale choice produces a safe start error rather than a silent
+  fallback to some default model.
+- **Capability-aware requests.** Every AI operation requires structured output, and
+  adapters declare which structured-output and reasoning capabilities they support.
+  The server picks the request shape — `json_schema` where the provider enforces a
+  schema, `json_object` for the provider's JSON mode, or `prompted_json` where the
+  schema is described in the prompt — and bounds the reasoning budget so a reasoning
+  model cannot consume the whole completion.
+- **No retrieval layer.** Prompts are assembled from the resume, the job description,
+  and the operation's structured context; there is no RAG or vector store to explain
+  away a bad answer.
 
-## Local-first data and credentials
+### Validation, retries, and cancellation
 
-On startup the backend resolves an application data directory, applies pending
-migrations, and opens the database:
+- **Per-request timeouts** cover headers and body, so a hanging provider fails fast.
+- **Bounded retry:** at most two attempts in total, separated by an abort-aware 250 ms
+  delay, with no exponential backoff.
+- **Real cancellation:** Stop aborts the in-flight provider request, discards the
+  incomplete attempt, and restores the intake for a retry.
+- **Progress you can watch:** work is executed server-side and progress is polled with
+  live stage reporting; navigation is locked while a stage is preparing or running.
+- **Sanitized failures:** HTTP errors, timeouts, truncation, refusals, and invalid
+  responses are normalized into safe application errors, each with its own distinct
+  message. Provider HTTP, transport, and timeout failures additionally carry the
+  sanitized diagnostics fields `providerStatus`, `failureCategory`, and `retryable`.
+  Provider response bodies, headers, and credentials are never surfaced in the UI or
+  written to logs.
+- **No live key validation, by design.** A key is exercised by the first real
+  operation, so connecting a provider never sends a test request.
 
-- Windows: `%APPDATA%\Job Search Assistant\`
-- macOS: `~/Library/Application Support/Job Search Assistant/`
-- Linux: `$XDG_DATA_HOME/job-search-assistant/` or `~/.local/share/job-search-assistant/`
+## Architecture and technology stack
 
-The data directory contains the SQLite database plus `documents/applications/`
-and `documents/enhancements/` for file artifacts. Set
-`JOB_SEARCH_ASSISTANT_DATA_DIR` to override the location (the test suite uses it
-to keep every run isolated). Runtime data is never stored inside the repository.
+A local-first modular monolith: one Node.js process serving a JSON API, one React
+single-page application, and one SQLite database. No cloud services, no accounts, no
+background workers, and no message queue.
 
-**Credential handling**
+```text
+Browser (React SPA)  ── HTTP/JSON ──►  Local Node backend (127.0.0.1:3001)
+                                            │
+                                            ├──► SQLite (node:sqlite) + local files
+                                            │
+                                            └──► Your AI provider (HTTPS, only while
+                                                 an operation you started is running)
+```
 
-- API keys live in the OS credential store, namespaced per provider: never in SQLite, application files, browser storage, or the repository.
-- Keys are write-only from the app's perspective: the backend never returns them and the UI never displays a saved key.
-- There is no plaintext fallback: if the secure store is unavailable, AI features report a clear configuration error instead of degrading.
-- The AI layer is the only place a credential is read, and only at execution time.
+```text
+src/                     React SPA: features, routing, shared UI
+  features/              applications · dashboard · people · resume-enhancer · settings
+  components/common/     shared form, dialog, model-select, and status components
+server/
+  http/                  routing, JSON handling, body limits, error mapping
+  modules/               applications · dashboard · people · documents · enhancements · ai
+    ai/                  provider adapters, credential stores, execution engine
+  database/migrations/   ordered SQL migrations (001–006) applied at startup
+shared/domain/           domain contracts shared by client and server
+tests/                   node:test suites: backend, contracts, SSR and jsdom components
+docs/                    product specification, architecture, ADRs, implementation status
+```
 
-**Privacy:** the workspace is local-first, but AI processing is not. When you run
-an AI operation, your resume and job description are sent to the provider you
-selected, under that provider's terms. The Settings page states this before use.
+In development, the browser talks to Vite, which proxies `/api` to the backend; the
+backend dispatches to a feature module, which reads and writes SQLite or the local
+document store. AI calls originate only from the backend.
+
+| Layer | Choice |
+| --- | --- |
+| Frontend | React 19.2, React Router 8.3, TypeScript ~6.0, Vite 8.2 |
+| Backend | Node.js `>=22.13`, TypeScript, `node:http`, `node:sqlite` |
+| Persistence | SQLite with ordered schema migrations, plus files on disk for application and enhancement artifacts |
+| AI | Five provider adapters behind one contract, per-operation model selection, in-process polling execution engine |
+| Resume Enhancer text extraction | `unpdf` for PDF, `mammoth` for DOCX |
+| Credentials | OS-native stores: Windows Credential Manager (in-process via `koffi`), macOS Keychain (`security`), Linux Secret Service (`secret-tool`) |
+| Quality | `oxlint`, `node:test` via `tsx` (30 test files, including server-rendered and jsdom component tests), GitHub Actions |
+
+**Testing and CI.** `npm test` runs the `node:test` suites through `tsx`; tests use an
+isolated temporary data directory and in-memory credential stores, so no real
+credential or user database is touched. The GitHub Actions workflow runs on pushes to
+`main` and on pull requests: `npm ci`, lint, tests, backend type-check
+(`tsc -p tsconfig.server.json --noEmit`), frontend type-check
+(`tsc -b tsconfig.app.json tsconfig.node.json`), then the production build.
+
+## Security and privacy
+
+This is a local-first design, not a claim of absolute privacy or security.
+
+**Where your data lives.** On startup the backend resolves an application data
+directory, applies pending migrations, and opens the database:
+
+| Platform | Data directory |
+| --- | --- |
+| Windows | `%APPDATA%\Job Search Assistant\` |
+| macOS | `~/Library/Application Support/Job Search Assistant/` |
+| Linux | `$XDG_DATA_HOME/job-search-assistant/` or `~/.local/share/job-search-assistant/` |
+
+It contains the SQLite database at `database/job-search-assistant.db`, plus
+`documents/applications/` and `documents/enhancements/` for file artifacts. Set
+`JOB_SEARCH_ASSISTANT_DATA_DIR` to override the location. Runtime data is never stored
+inside the repository.
+
+**How credentials are stored.** API keys are held only by the operating system's
+credential store — Windows Credential Manager (via `koffi`), macOS Keychain, or Linux
+Secret Service — namespaced per provider. There is no plaintext fallback: if the
+secure store is unavailable, AI features report a configuration error instead of
+degrading. Keys are write-only from the application's perspective (never returned by
+the API, never redisplayed after saving), and the AI execution layer is the only code
+that reads one, only at execution time.
+
+**What leaves your machine.** The workspace is local, but AI processing is not. When
+you run an operation, your resume and job description are sent to the provider you
+selected and are governed by that provider's terms; the app states this before use.
+The backend binds to `127.0.0.1` and has no authentication, because it is built for a
+single local user — it is not designed to be exposed to a network or the internet.
 
 ## Getting started
 
-**Requirements:** Node.js 22.5 or later (24 LTS recommended, for `node:sqlite`)
-and npm.
+**Prerequisites:** Node.js 22.13 or later (the CI workflow uses Node 24) and npm.
 
 ```bash
 npm install
 npm run dev
 ```
 
-`npm run dev` starts the backend and waits for `/api/health` before starting
-Vite, so the first page load does not race the API:
+`npm run dev` starts the backend in watch mode, waits for `GET /api/health` to
+succeed, and only then starts Vite — so the first page load cannot race the API.
 
 - Frontend (Vite): `http://localhost:5173`
-- Backend (local): `http://127.0.0.1:3001`
+- Backend: `http://127.0.0.1:3001`
 
-Then open the **Providers** page in Settings, connect a provider with your own API key, and
-go to **Resume Enhancer**.
+Then open **Settings → Providers**, connect a provider with your own API key, and go
+to **Resume Enhancer**.
 
 | Script | Purpose |
 | --- | --- |
-| `npm run dev` | backend (watch) and frontend, backend-readiness gated |
-| `npm test` | full test suite |
+| `npm run dev` | Backend (watch) and Vite, gated on backend readiness |
+| `npm run build` | Type-check and build the backend to `dist-server/` and the frontend to `dist/` |
+| `npm run preview` | Serve the built frontend with Vite preview |
+| `npm test` | Full `node:test` suite via `tsx` |
 | `npm run lint` | `oxlint` |
-| `npm run build` | type-check and build backend (`dist-server/`) and frontend (`dist/`) |
 
-The production build compiles the backend to `dist-server/` and bundles the
-frontend into `dist/`. Neither directory is committed.
+`npm run dev` composes the individual `dev:server`, `dev:wait-for-backend`, and
+`dev:web` scripts if you need to run one part on its own.
 
-## Testing and quality
+**Configuration.** `JOB_SEARCH_ASSISTANT_DATA_DIR` relocates the data directory
+(used by the test suite to keep each run isolated). AI credentials are not part of
+application configuration: they are entered in Settings → Providers and stored by the
+operating system's credential store, never in the repository or a config file.
 
-```bash
-npm test          # node:test suites via tsx
-npm run lint      # static analysis
-npm run build     # server and web type-checks plus production build
-```
+## Project documentation
 
-The suite covers backend services and repositories, AI provider adapters with
-stubbed `fetch` (no live provider calls), schema migrations, ResumePatch semantics
-and BaseResume invariants, and UI contracts through server-rendered markup and
-jsdom interaction tests. Every run uses an isolated temporary data directory and
-an in-memory credential store, so no real credential or user database is touched.
-
-## Documentation
-
-Product behavior and technical design are documented separately, so decisions are
+Product behavior and technical design are documented separately so decisions stay
 traceable:
 
-- `docs/product/`: vision, principles, per-feature specifications, and approved product decisions.
-- `docs/architecture/`: system, backend, frontend, data, security, and AI architecture.
-- `docs/architecture/ADRs/`: significant technical decisions (local-first monolith, SQLite, provider abstraction, polling execution, text extraction, multi-provider selection, OpenRouter discovery, native credential store, BaseResume and ResumePatch, cancellation, reasoning budget, role-alignment guard).
-- `docs/IMPLEMENTATION_STATUS.md`: milestone history with implementation and validation evidence.
-- `docs/obsolete/` and `obsolete/`: historical material, explicitly not authoritative.
+- [System architecture](docs/architecture/SYSTEM_ARCHITECTURE.md) — components,
+  boundaries, and request flow.
+- [AI architecture](docs/architecture/AI_ARCHITECTURE.md) — provider contract,
+  execution engine, and failure handling.
+- [Security model](docs/architecture/SECURITY.md) — data locations, credential
+  handling, and trust boundaries.
+- [Architecture decision records](docs/architecture/ADRs/) — the reasoning behind the
+  local-first monolith, SQLite, provider abstraction, BaseResume/ResumePatch,
+  cancellation, bounded retry, and the role-mismatch guard.
+- [Implementation status](docs/IMPLEMENTATION_STATUS.md) — milestone history with
+  validation evidence.
+- [Product vision](docs/product/PRODUCT_VISION.md) and
+  [product principles](docs/product/PRODUCT_PRINCIPLES.md) — the product intent
+  behind the feature set.
 
-## Current status
+## Roadmap and current status
 
-Implemented and validated: Applications, People, Documents, Dashboard, secure
-multi-provider AI configuration, the Resume Enhancer workflow end to end
-(analysis, suggestions, patch-based enhancement, cover letter, re-analysis, stop),
+**Implemented and validated:** Applications, People, Documents, the computed
+Dashboard, secure multi-provider AI configuration, the Resume Enhancer workflow end to
+end (analysis, suggestions, patch-based enhancement, cover letter, re-analysis, Stop),
 and provider management in Settings.
 
-Not implemented yet (deferred, tracked in `docs/IMPLEMENTATION_STATUS.md`):
+**Planned or not implemented yet:**
 
-- DOCX and PDF generation plus download of enhanced resumes and cover letters.
-- Carrying an enhanced resume or cover letter into an Application.
-- Revisiting or retaining past enhancement sessions after the retention window.
-- Multi-user, sync, or cloud deployment. The app intentionally has no authentication because it binds to `127.0.0.1` for a single local user.
+- DOCX and PDF generation and download of enhanced resumes and cover letters.
+- Carrying an enhanced resume or cover letter into an application.
+- Retaining and revisiting past enhancement sessions beyond the retention window.
+- Desktop packaging (Electron) as a possible future distribution option. The app
+  currently runs as a local web application with a local backend; no packaged desktop
+  build exists.
 
-Limitations worth knowing: AI features require your own provider key and are
-billed by that provider; model catalogs and capability tiers vary by provider and
-change upstream; and AI output is reviewable but not guaranteed correct. The app
-presents it as a patch over your original document, so you decide what to keep.
+**Explicitly out of scope:** multi-user support, sync, and cloud deployment. The
+backend is intentionally single-user and unauthenticated on `127.0.0.1`.
+
+**Known limitations:** AI features need your own provider key and are billed by that
+provider; model catalogs and capability tiers vary by provider and change upstream;
+AI output is reviewable but not guaranteed correct, which is why enhancements arrive
+as a patch over your original document rather than a replacement.
 
 ## License
 
-No license file is present yet. The source is published for portfolio review; add
-a license before reuse or redistribution.
+MIT — see [LICENSE](LICENSE). Copyright (c) 2026 shaikm32.

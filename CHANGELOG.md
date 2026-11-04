@@ -4,6 +4,46 @@ Notable changes to Job Search Assistant, the local-first job-search workspace an
 AI Resume Enhancer. Format follows Keep a Changelog; versions follow semantic
 versioning. The project is pre-1.0, so minor releases may include breaking changes.
 
+## [Unreleased]
+
+### Added
+
+- **Sanitized provider diagnostics.** Every failed provider attempt and every
+  terminal operation record reports the operation, provider, model, attempt
+  count, status or `none`, failure category, outcome, error class, and duration.
+  The terminal record separates the application status from the provider's own
+  status. Provider bodies, headers, and credentials are never included.
+
+### Changed
+
+- **Provider retries are bounded.** A request is attempted at most twice, with an
+  abort-aware 250 ms delay, no backoff, and a deadline guard so a retry only
+  happens when it can still finish inside the operation deadline. A 429 is
+  classified as non-retryable and is not retried automatically.
+- **The provider timeout covers the whole response lifecycle**, including body
+  reading, instead of only the initial request.
+- **Terminal operations no longer report an `active` step.** A failed or
+  timed-out operation resets its in-flight step to `pending`; cancelled
+  operations keep their snapshot and late results are still discarded.
+
+### Fixed
+
+- **Whitespace-only credentials are treated as not configured** before any
+  request is attempted, while credential storage stays byte-faithful and never
+  trims or rewrites the stored value.
+- **An OpenRouter 401 on a key that worked elsewhere was a credential
+  mismatch, not a code defect.** A secret-free SHA-256 fingerprint comparison
+  showed the application and the other tool were not using the same credential
+  bytes, while the endpoint, Bearer header, and verbatim credential transport
+  were identical. No credential values, prefixes, lengths, or fingerprints are
+  recorded here.
+
+### Security
+
+- Diagnostics remain sanitized: provider response bodies, headers, and
+  credential material are never logged, and the read-time credential guard
+  rejects whitespace-only values without exposing them.
+
 ## [0.9.0] - 2026-11-04
 
 First portfolio release: the application is feature-complete through Milestone 9

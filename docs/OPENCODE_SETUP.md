@@ -136,7 +136,7 @@ Repository documentation is the source of truth:
 
 Approved product decisions take precedence for product behavior; architecture
 specifications and ADRs govern technical implementation. Documents under
-`docs/obsolete/` are historical only and must not be used as authority.
+`obsolete/` are historical only and must not be used as authority.
 
 ## 11. Key Operating Principles
 

@@ -25,7 +25,7 @@ implementation when implementing an approved change.
 
 ## 2. Obsolete Documentation
 
-AI agents **MUST NOT** use files under `docs/obsolete/` as product requirements,
+AI agents **MUST NOT** use files under `obsolete/` as product requirements,
 architectural guidance, implementation instructions, or decision authority; they exist
 only for historical reference.
 
@@ -182,7 +182,7 @@ whether an approved product decision resolves it; (3) check the relevant feature
 architecture specifications; (4) do not silently choose a behavior that materially
 changes the product; (5) ask for clarification when necessary; (6) once resolved, update
 the appropriate documentation so the conflict does not remain. Never use documents under
-`docs/obsolete/` to resolve a conflict.
+`obsolete/` to resolve a conflict.
 
 ---
 

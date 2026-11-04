@@ -25,9 +25,9 @@ The active documentation structure is:
 - `AGENTS.md` — agent behavior and repository rules
 - `docs/product/` — product requirements, features, workflows, UI/UX, and product decisions
 - `docs/architecture/` — technical architecture, APIs, data, security, AI architecture, storage, and ADRs
-- `docs/obsolete/` — historical documents that must not be treated as current requirements
+- `obsolete/` — historical documents that must not be treated as current requirements
 
-Do not use documents under `docs/obsolete/` as implementation requirements.
+Do not use documents under `obsolete/` as implementation requirements.
 
 Do not create another source of truth when the required information already exists in the active documentation.
 
@@ -375,7 +375,7 @@ If active product and architecture documentation appear to conflict:
 3. If unresolved and materially significant, surface it before implementation.
 4. Do not silently choose a product behavior.
 
-Historical documents under `docs/obsolete/` do not override active documentation.
+Historical documents under `obsolete/` do not override active documentation.
 
 ## 25. Working Style
 

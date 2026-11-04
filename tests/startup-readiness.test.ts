@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { createServer } from 'node:http'
+import { resolve } from 'node:path'
 import { describe, it } from 'node:test'
-import { waitForBackend } from '../scripts/wait-for-backend.ts'
+import { fileURLToPath } from 'node:url'
+import { isDirectExecution, waitForBackend } from '../scripts/wait-for-backend.ts'
 
 describe('startup readiness', () => {
   it('resolves when health transitions from 503 to 200', async () => {
@@ -59,5 +62,63 @@ describe('startup readiness', () => {
       server.close()
     }
     assert.ok(error, 'expected waitForBackend to reject on timeout for a persistently unhealthy backend')
+  })
+})
+
+describe('isDirectExecution', () => {
+  const scriptUrl = new URL('../scripts/wait-for-backend.ts', import.meta.url).href
+  const scriptPath = fileURLToPath(scriptUrl)
+
+  it('returns true for the script executed as the entry point', () => {
+    assert.strictEqual(isDirectExecution(scriptUrl, scriptPath), true)
+  })
+
+  it('returns false for a different file path', () => {
+    const otherPath = fileURLToPath(new URL('./startup-readiness.test.ts', import.meta.url))
+    assert.strictEqual(isDirectExecution(scriptUrl, otherPath), false)
+  })
+
+  it('returns false when the entry argument is missing', () => {
+    assert.strictEqual(isDirectExecution(scriptUrl, undefined), false)
+  })
+
+  it('returns false instead of throwing for an invalid URL or path', () => {
+    assert.strictEqual(isDirectExecution('not-a-valid-url', scriptPath), false)
+    assert.strictEqual(isDirectExecution(scriptUrl, resolve('\0invalid')), false)
+  })
+
+  it(
+    'compares case-insensitively on Windows',
+    { skip: process.platform !== 'win32' },
+    () => {
+      assert.strictEqual(isDirectExecution(scriptUrl, scriptPath.toUpperCase()), true)
+    },
+  )
+
+  it('runs the readiness check when executed directly', () => {
+    const result = spawnSync(process.execPath, ['--import', 'tsx', scriptPath], {
+      timeout: 4000,
+      encoding: 'utf8',
+    })
+    const output = `${result.stdout ?? ''}${result.stderr ?? ''}`
+    if (output.trim() === '') {
+      assert.fail(
+        `expected the readiness CLI to log something; stderr: ${result.stderr ?? ''}` +
+          (result.error ? ` (${result.error.message})` : ''),
+      )
+    }
+    assert.match(output, /Backend (is ready|not reachable yet|not ready yet)/)
+  })
+
+  it('does not run the readiness CLI when imported as a module', () => {
+    const scriptUrl = new URL('../scripts/wait-for-backend.ts', import.meta.url).href
+    const result = spawnSync(
+      process.execPath,
+      ['--import', 'tsx', '--input-type=module', '-e', `await import(${JSON.stringify(scriptUrl)})`],
+      { timeout: 4000, encoding: 'utf8' },
+    )
+    const output = `${result.stdout ?? ''}${result.stderr ?? ''}`.trim()
+    assert.strictEqual(result.status, 0)
+    assert.strictEqual(output, '', `expected no CLI output on import, got: ${output}`)
   })
 })
