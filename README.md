@@ -13,6 +13,23 @@ credentials held in the operating system's secure credential store.
 > as a local desktop-style web app on `localhost`. See
 > [Current status](#current-status) for what is and is not built yet.
 
+## Screenshots
+
+All screenshots use a synthetic demo dataset. No real resume, application, or
+credential data is shown.
+
+**Dashboard** - computed pipeline, recent applications, and networking activity.
+
+![Dashboard showing application totals, pipeline stages, recent applications, and networking metrics](docs/assets/dashboard.jpg)
+
+**Resume Enhancer** - resume upload, explicit provider and model selection, and job-description intake.
+
+![Resume Enhancer intake screen with resume dropzone, provider and model selectors, and job description field](docs/assets/resume-enhancer-intake.png)
+
+**Providers** - connected and available AI providers with per-provider API-key management.
+
+![Provider management in Settings listing a connected provider and popular providers](docs/assets/settings-providers.png)
+
 ## The problem
 
 Job searching produces a lot of state that is awkward to keep in documents and
