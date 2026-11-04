@@ -51,12 +51,14 @@ export function getDashboardSummary(): DashboardSummary {
     0,
   )
 
-  let requestsSent = 0
+  // Every person row represents at most one outgoing connection request. The
+  // status records its current lifecycle stage: pending, accepted, or declined.
+  let pendingRequests = 0
   let connected = 0
   let notConnected = 0
   for (const person of people) {
     if (person.connectionStatus === REQUEST_SENT_STATUS) {
-      requestsSent += 1
+      pendingRequests += 1
     }
     if (person.connectionStatus === CONNECTED_STATUS) {
       connected += 1
@@ -65,7 +67,7 @@ export function getDashboardSummary(): DashboardSummary {
       notConnected += 1
     }
   }
-  const resolvedOutcomes = connected + notConnected
+  const requestsSentTotal = pendingRequests + connected + notConnected
 
   return {
     applications: {
@@ -84,10 +86,10 @@ export function getDashboardSummary(): DashboardSummary {
     })),
     networking: {
       total: people.length,
-      requestsSent,
+      requestsSent: pendingRequests,
       connected,
       acceptanceRate:
-        resolvedOutcomes === 0 ? null : Math.round((connected / resolvedOutcomes) * 1000) / 10,
+        requestsSentTotal === 0 ? null : Math.round((connected / requestsSentTotal) * 1000) / 10,
     },
   }
 }

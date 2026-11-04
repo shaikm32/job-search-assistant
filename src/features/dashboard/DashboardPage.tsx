@@ -65,6 +65,16 @@ function UsersIcon() {
   )
 }
 
+function UserCheckIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.6" />
+      <path d="m16 11 2 2 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 function greetingForHour(hour: number): string {
   if (hour < 12) {
     return 'Good morning'
@@ -243,11 +253,12 @@ export function DashboardPage() {
             <span className="metric-label">Connected</span>
           </div>
           <div className="metric-card metric-card--purple">
-            <span className="metric-value">
-              {networking.acceptanceRate === null
-                ? 'No connection outcomes yet'
-                : `${networking.acceptanceRate}%`}
-            </span>
+            <div className="metric-card-head">
+              <span className="metric-value">
+                {networking.acceptanceRate === null ? '—' : `${networking.acceptanceRate}%`}
+              </span>
+              <span className="icon-chip icon-chip--purple"><UserCheckIcon /></span>
+            </div>
             <span className="metric-label">Connection Acceptance Rate</span>
           </div>
         </div>

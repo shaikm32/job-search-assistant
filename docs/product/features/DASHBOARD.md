@@ -66,18 +66,21 @@ Calculate:
 
 ```text
 Connected
-──────────────────────────── × 100
-Connected + Not Connected
+────────────────────────────────────────────────────── × 100
+Request Sent + Connected + Not Connected
 ```
+
+Only outgoing connection requests count. Each person represents at most one
+outgoing request, so pending, accepted, and declined requests are counted once.
+Pending requests remain in the denominator.
 
 Exclude:
 - Identified
-- Request Sent
 
-If no resolved outcomes exist, show:
+If no requests have been sent, show:
 
 ```text
-No connection outcomes yet
+—
 ```
 
 ## Product constraints

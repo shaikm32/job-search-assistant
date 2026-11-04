@@ -20,7 +20,7 @@ export interface NetworkingMetrics {
   total: number
   requestsSent: number
   connected: number
-  /** Percentage rounded to 1 decimal, or null when no resolved outcomes exist. */
+  /** Percentage rounded to 1 decimal, or null when no requests have been sent. */
   acceptanceRate: number | null
 }
 

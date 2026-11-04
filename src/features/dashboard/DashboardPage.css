@@ -236,20 +236,10 @@
   align-content: start;
 }
 
-/* Fourth card (no icon/head) keeps its natural flex-column flow, top-packed
-   like its siblings — same padding, same rhythm, no imitation layout. */
-.dashboard .dashboard-panel .metric-card:not(:has(.metric-card-head)) {
-  justify-content: flex-start;
-}
-
-/* Connection-outcome heading: a sentence, not a numeral, so it sits
-   subordinate to the 32px primary metric numbers. At 18px it fits its
-   ~250px column on one line, keeping this card shorter than its headed
-   siblings so it never drives the row taller. Clearly readable, with the
-   existing label beneath it. Wrapping remains allowed at narrow widths. */
-.dashboard .dashboard-panel .metric-card:not(:has(.metric-card-head)) .metric-value {
-  font-size: 18px;
-  letter-spacing: 0;
+/* The acceptance label is the only multi-line networking label. A tighter
+   line-height keeps its wrapped text readable without letting that card
+   tower over the single-line cards beside it. */
+.dashboard .dashboard-panel .metric-card--purple .metric-label {
   line-height: 1.3;
 }
 
@@ -434,12 +424,5 @@
 
   .dashboard .dashboard-panel .pipeline-row .pipeline-count {
     grid-area: count;
-  }
-
-  /* Acceptance-rate heading keeps its semantic text at the same
-     subordinate size as desktop; it may wrap on half-width cards. */
-  .dashboard .dashboard-panel .metric-card:not(:has(.metric-card-head)) .metric-value {
-    font-size: 18px;
-    letter-spacing: 0;
   }
 }
