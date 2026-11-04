@@ -30,12 +30,12 @@ editing as a reviewable patch rather than a blind rewrite.
 
 - **Applications**: company, role, status, dates, source, notes, and per-application documents.
 - **Networking**: people and companies you are in contact with, linked to applications.
-- **Documents**: resume and cover-letter attachments stored on disk and extracted to text for AI use (PDF, DOCX, TXT, MD).
+- **Documents**: resume and cover-letter attachments stored on disk (PDF, DOC, DOCX) and extracted to text for AI use.
 - **Dashboard**: computed overview of applications, activity, and recent work.
 
 **Resume Enhancer**
 
-- Paste or upload a resume plus a job description, then choose an AI provider and model.
+- Paste a resume or upload a PDF or DOCX, add the job description, then choose an AI provider and model.
 - **Structured analysis**: overall match, an AI-estimated ATS score, key strengths, key gaps, and a role-alignment assessment that can flag a genuine role mismatch instead of forcing an enhancement.
 - **Suggestion generation** for specific improvement areas.
 - **Deterministic-first enhancement**: each session has one immutable canonical *BaseResume*; the model returns a targeted *ResumePatch* that the server validates and applies against that untouched base, so sections you did not ask to change stay byte-identical.
