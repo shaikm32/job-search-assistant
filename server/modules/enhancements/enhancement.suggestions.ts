@@ -199,6 +199,7 @@ export function createSuggestionsRunner(
         providerId: inputs.providerId,
         modelId: inputs.modelId,
       }),
+      context.signal,
     )
     const suggestions = parseSuggestionsResult(response.output)
     context.completeStep(identifyOpportunities)

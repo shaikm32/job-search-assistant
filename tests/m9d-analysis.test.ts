@@ -55,6 +55,7 @@ const VALID_ANALYSIS_RESULT = {
       id: 'nodejs-experience',
       title: 'Backend experience',
       description: 'The resume describes five years of Node.js services, matching the JD.',
+      area: 'experience',
     },
   ],
   gaps: [
@@ -63,8 +64,17 @@ const VALID_ANALYSIS_RESULT = {
       title: 'Kubernetes not evidenced',
       description: 'The resume does not mention Kubernetes, which the JD asks for.',
       jdEvidence: 'The job description requires Kubernetes experience.',
+      category: 'skills',
+      kind: 'not_demonstrated',
     },
   ],
+  roleAlignment: {
+    resumeRole: 'Backend Developer',
+    jobDescriptionRole: 'Senior Backend Engineer',
+    assessment: 'aligned',
+    uncertain: false,
+    reasons: ['Both roles focus on Node.js backend services and API development.'],
+  },
 }
 
 class InMemoryCredentialStore {
@@ -318,7 +328,7 @@ describe('M9-D AnalysisResult domain validation', () => {
   })
 
   it('rejects missing required fields and malformed strengths/gaps', () => {
-    for (const field of ['atsScore', 'fitMatch', 'strengths', 'gaps']) {
+    for (const field of ['atsScore', 'fitMatch', 'strengths', 'gaps', 'roleAlignment']) {
       const output = validAnalysisOutput()
       delete output[field]
       assert.throws(() => parseAnalysisResult(output), undefined, `missing ${field}`)
@@ -331,6 +341,149 @@ describe('M9-D AnalysisResult domain validation', () => {
     )
     assert.throws(() => parseAnalysisResult(null))
     assert.throws(() => parseAnalysisResult('nope'))
+  })
+
+  it('rejects malformed role-alignment output', () => {
+    const invalidAlignments: Array<Record<string, unknown>> = [
+      { assessment: 'excellent' },
+      { assessment: undefined },
+      { uncertain: 'no' },
+      { uncertain: undefined },
+      { reasons: [] },
+      { reasons: ['   '] },
+      { reasons: 'both roles match' },
+      { resumeRole: '' },
+      { resumeRole: '   ' },
+      { jobDescriptionRole: '' },
+    ]
+    for (const patch of invalidAlignments) {
+      const output = {
+        ...validAnalysisOutput(),
+        roleAlignment: { ...VALID_ANALYSIS_RESULT.roleAlignment, ...patch },
+      }
+      assert.throws(
+        () => parseAnalysisResult(output),
+        undefined,
+        `roleAlignment ${JSON.stringify(patch)}`,
+      )
+    }
+    assert.throws(() =>
+      parseAnalysisResult({ ...validAnalysisOutput(), roleAlignment: 'aligned' }),
+    )
+  })
+
+  it('accepts a confident "different" assessment and an uncertain one', () => {
+    const different = parseAnalysisResult({
+      ...validAnalysisOutput(),
+      roleAlignment: {
+        ...VALID_ANALYSIS_RESULT.roleAlignment,
+        assessment: 'different',
+        reasons: ['The job description targets product management, not software engineering.'],
+      },
+    })
+    assert.equal(different.roleAlignment?.assessment, 'different')
+    assert.equal(different.roleAlignment?.uncertain, false)
+
+    // Uncertainty wins over the label; it is a valid provider response.
+    const uncertain = parseAnalysisResult({
+      ...validAnalysisOutput(),
+      roleAlignment: {
+        ...VALID_ANALYSIS_RESULT.roleAlignment,
+        assessment: 'different',
+        uncertain: true,
+      },
+    })
+    assert.equal(uncertain.roleAlignment?.uncertain, true)
+  })
+
+  it('rejects unknown gap category/kind and classifies known ones', () => {
+    for (const patch of [{ category: 'nice-to-have' }, { kind: 'maybe' }, { kind: 'MISSING' }]) {
+      const output = validAnalysisOutput()
+      output.gaps = [
+        { ...(output.gaps as Array<Record<string, unknown>>)[0], ...patch },
+      ]
+      assert.throws(() => parseAnalysisResult(output), undefined, JSON.stringify(patch))
+    }
+    const parsed = parseAnalysisResult(validAnalysisOutput())
+    assert.equal(parsed.gaps[0]?.category, 'skills')
+    assert.equal(parsed.gaps[0]?.kind, 'not_demonstrated')
+  })
+
+  it('rejects unknown or missing strength areas in provider-output mode', () => {
+    const invalidAreas: unknown[] = ['nice-to-have', 'SKILLS', '', 42, null]
+    for (const area of invalidAreas) {
+      const output = validAnalysisOutput()
+      const strengths = output.strengths as Array<Record<string, unknown>>
+      strengths[0] = { ...strengths[0]!, area }
+      assert.throws(() => parseAnalysisResult(output), undefined, `area ${String(area)}`)
+    }
+    const missing = validAnalysisOutput()
+    missing.strengths = [
+      { id: 'backend', title: 'Backend experience', description: 'Node.js services.' },
+    ]
+    assert.throws(() => parseAnalysisResult(missing), undefined, 'missing area')
+
+    const parsed = parseAnalysisResult(validAnalysisOutput())
+    assert.equal(parsed.strengths[0]?.area, 'experience')
+  })
+
+  it('accepts a pre-change (legacy) result in forwarded-payload mode only', () => {
+    const legacy = validAnalysisOutput()
+    delete legacy.roleAlignment
+    legacy.strengths = [
+      {
+        id: 'nodejs-experience',
+        title: 'Backend experience',
+        description: 'The resume describes five years of Node.js services.',
+      },
+    ]
+    legacy.gaps = [
+      {
+        id: 'kubernetes',
+        title: 'Kubernetes not evidenced',
+        description: 'The resume does not mention Kubernetes.',
+        jdEvidence: 'The JD requires Kubernetes.',
+      },
+    ]
+    // Provider output still requires the structured fields ...
+    assert.throws(() => parseAnalysisResult(legacy))
+    // ... while a canonical result produced before the change is accepted, with
+    // no classification invented for it.
+    const forwarded = parseAnalysisResult(legacy, { requireRoleAlignment: false })
+    assert.equal(forwarded.roleAlignment, undefined)
+    assert.equal(forwarded.strengths[0]?.area, undefined)
+    assert.equal(forwarded.gaps[0]?.category, undefined)
+    assert.equal(forwarded.gaps[0]?.kind, undefined)
+  })
+
+  it('rejects present-but-partial fields in forwarded-payload mode', () => {
+    const legacy = validAnalysisOutput()
+    delete legacy.roleAlignment
+    legacy.gaps = [
+      {
+        id: 'kubernetes',
+        title: 'Kubernetes not evidenced',
+        description: 'The resume does not mention Kubernetes.',
+      },
+    ]
+    assert.throws(() => parseAnalysisResult(legacy, { requireRoleAlignment: false }))
+
+    const malformed = validAnalysisOutput()
+    malformed.roleAlignment = { ...VALID_ANALYSIS_RESULT.roleAlignment, uncertain: 'yes' }
+    assert.throws(() => parseAnalysisResult(malformed, { requireRoleAlignment: false }))
+
+    const malformedArea = validAnalysisOutput()
+    malformedArea.strengths = [
+      {
+        id: 'nodejs-experience',
+        title: 'Backend experience',
+        description: 'Node.js services.',
+        area: 'nice-to-have',
+      },
+    ]
+    assert.throws(() =>
+      parseAnalysisResult(malformedArea, { requireRoleAlignment: false }),
+    )
   })
 })
 
@@ -398,6 +551,13 @@ describe('M9-D end-to-end analysis through the execution pipeline', () => {
       status.result.gaps[0].jdEvidence,
       'The job description requires Kubernetes experience.',
     )
+    // ADR-012: the canonical result carries the role alignment, the strength
+    // area, and the gap classification the provider produced.
+    assert.equal(status.result.roleAlignment.resumeRole, 'Backend Developer')
+    assert.equal(status.result.roleAlignment.assessment, 'aligned')
+    assert.equal(status.result.strengths[0].area, 'experience')
+    assert.equal(status.result.gaps[0].category, 'skills')
+    assert.equal(status.result.gaps[0].kind, 'not_demonstrated')
     // The credential reached the provider abstraction through the only
     // sanctioned path, and never appears in the status contract.
     assert.equal(lastCapturedCredential, SECRET_KEY)

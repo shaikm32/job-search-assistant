@@ -28,7 +28,9 @@ const { setAdaptersForTests } = await import('../server/modules/ai/provider.regi
 const { clearAiConfiguration, saveAiConfiguration } = await import(
   '../server/modules/ai/ai.service.js'
 )
-const { AiNotConfiguredError } = await import('../server/modules/ai/ai.errors.js')
+const { AiNotConfiguredError, AiResponseInvalidError } = await import(
+  '../server/modules/ai/ai.errors.js'
+)
 const {
   resetAiOperationsForTests,
 } = await import('../server/modules/ai/ai-operation.engine.js')
@@ -39,6 +41,8 @@ const {
   createEnhancementSession,
   discardEnhancementSession,
   getEnhancementOperationStatus,
+  getEnhancementSession,
+  markEnhancementSessionCompleted,
   saveJobDescription,
   startEnhancementAnalysis,
 } = await import('../server/modules/enhancements/enhancement.service.js')
@@ -62,8 +66,14 @@ const { parseAnalysisResult } = await import(
 const { parseSuggestionsResult } = await import(
   '../server/modules/enhancements/enhancement.suggestions.js'
 )
-const { parseEnhancementResult } = await import(
-  '../server/modules/enhancements/enhancement.enhance.js'
+const { computeBaseVersionId } = await import(
+  '../server/modules/enhancements/base-resume.contract.js'
+)
+const { parseResumePatchOutput, validatePatchForBase } = await import(
+  '../server/modules/enhancements/resume-patch.contract.js'
+)
+const { applyResumePatch, buildChangeSummary } = await import(
+  '../server/modules/enhancements/resume-patch.apply.js'
 )
 const { parseReanalysisResult } = await import(
   '../server/modules/enhancements/enhancement.reanalysis.js'
@@ -87,13 +97,19 @@ const FAKE_ALL_OPERATIONS = [
   'enhance_resume',
   'reanalyze_resume',
   'generate_cover_letter',
+  'structure_resume',
 ] as const
 
 const VALID_ANALYSIS = {
   atsScore: 72,
   fitMatch: 'medium',
   strengths: [
-    { id: 'backend', title: 'Backend experience', description: 'Node.js services.' },
+    {
+      id: 'backend',
+      title: 'Backend experience',
+      description: 'Node.js services.',
+      area: 'experience',
+    },
   ],
   gaps: [
     {
@@ -101,8 +117,31 @@ const VALID_ANALYSIS = {
       title: 'Kubernetes not evidenced',
       description: 'The resume does not mention Kubernetes.',
       jdEvidence: 'The JD requires Kubernetes.',
+      category: 'skills',
+      kind: 'not_demonstrated',
     },
   ],
+  roleAlignment: {
+    resumeRole: 'Backend Developer',
+    jobDescriptionRole: 'Backend Engineer',
+    assessment: 'aligned',
+    uncertain: false,
+    reasons: ['Both roles target Node.js backend services.'],
+  },
+}
+
+/** A confident role mismatch: a software resume against a product-manager JD. */
+const MISMATCHED_ANALYSIS = {
+  ...VALID_ANALYSIS,
+  roleAlignment: {
+    resumeRole: 'Software Developer',
+    jobDescriptionRole: 'Product Manager',
+    assessment: 'different',
+    uncertain: false,
+    reasons: [
+      'The job description owns product strategy and roadmap decisions rather than software delivery.',
+    ],
+  },
 }
 
 const VALID_RESUME = {
@@ -129,15 +168,80 @@ const VALID_SUGGESTION = {
   proposedChange: { description: 'Add Kubernetes.', targetContent: 'Kubernetes' },
 }
 
-const VALID_CHANGE = {
-  id: 'change-skills',
-  type: 'added',
-  section: 'skills',
-  summary: 'Added Kubernetes to skills.',
+/**
+ * M9-H: Enhance Resume now returns a targeted ResumePatch against the
+ * server-owned canonical BaseResume. The fake adapter must target the exact
+ * version the backend derived, and content is addressed by literal text.
+ */
+const BASE_VERSION = computeBaseVersionId(VALID_RESUME)
+
+const ENHANCE_PATCH = {
+  baseVersionId: BASE_VERSION,
+  operations: [
+    {
+      id: 'add-kubernetes',
+      op: 'insert',
+      section: 'skills',
+      exact: null,
+      occurrence: 0,
+      content: '\nKubernetes',
+      anchor: 'section_end',
+      anchorExact: null,
+      anchorOccurrence: 0,
+      heading: null,
+    },
+  ],
 }
 
 const VALID_REANALYSIS = { atsScore: 81, fitMatch: 'strong' }
-const VALID_COVER_LETTER = { content: 'Dear Hiring Manager,\n\nI am excited to apply.' }
+
+/** Builds a letter with an exact word count split across blank-line paragraphs. */
+function makeCoverLetter(totalWords: number, paragraphCount = 3): string {
+  const base = Math.floor(totalWords / paragraphCount)
+  let remainder = totalWords - base * paragraphCount
+  return Array.from({ length: paragraphCount }, (_, paragraphIndex) => {
+    const count = base + (remainder > 0 ? 1 : 0)
+    if (remainder > 0) {
+      remainder -= 1
+    }
+    return Array.from(
+      { length: count },
+      (_, wordIndex) => `word${paragraphIndex}_${wordIndex}`,
+    ).join(' ')
+  }).join('\n\n')
+}
+
+function countWords(text: string): number {
+  return text.split(/\s+/).filter((word) => word.length > 0).length
+}
+
+/**
+ * A valid 250-350 word, multi-paragraph fixture. The realistic greeting and
+ * sign-off are kept for the end-to-end assertion while filler tokens keep the
+ * word count deterministic.
+ */
+const VALID_COVER_LETTER = {
+  content: [
+    'Dear Hiring Manager,',
+    `I am applying for the role because ${makeCoverLetter(46, 1)}.`,
+    `My experience includes ${makeCoverLetter(60, 1)}.`,
+    `I have delivered ${makeCoverLetter(60, 1)}.`,
+    `I would welcome the opportunity ${makeCoverLetter(60, 1)}.`,
+    'Sincerely,\nJane Doe',
+  ].join('\n\n'),
+}
+
+/** Builds a canonical BaseResume around a canonical resume for engine tests. */
+function asBase(resume: unknown) {
+  const canonical = parseResume(resume)
+  return {
+    schemaVersion: 1,
+    baseVersionId: computeBaseVersionId(canonical),
+    source: 'deterministic' as const,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    resume: canonical,
+  }
+}
 
 class InMemoryCredentialStore {
   #credentials = new Map<string, string>()
@@ -156,7 +260,17 @@ class InMemoryCredentialStore {
 }
 
 let lastCapturedCredential: string | null = null
-type FakeBehaviour = (request: { operation: string }, credential: string) => Promise<unknown>
+let lastEnhanceRequest: {
+  userPrompt: string
+  structuredOutput: { contract: string; schema: Record<string, unknown> }
+} | null = null
+let structureResumeCalls = 0
+type FakeRequest = {
+  operation: string
+  userPrompt?: string
+  structuredOutput?: { contract: string; schema: Record<string, unknown> }
+}
+type FakeBehaviour = (request: FakeRequest, credential: string) => Promise<unknown>
 let fakeAdapterBehaviour: FakeBehaviour = () =>
   Promise.reject(new Error('not configured by test'))
 
@@ -187,12 +301,12 @@ const fakeAdapter = {
   models: fakeModels,
   execute: (request: unknown, credential: string) => {
     lastCapturedCredential = credential
-    return fakeAdapterBehaviour(request as { operation: string }, credential)
+    return fakeAdapterBehaviour(request as FakeRequest, credential)
   },
 }
 
 function defaultBehaviour(
-  request: { operation: string },
+  request: FakeRequest,
 ): Promise<{ output: unknown; metadata: Record<string, unknown> }> {
   const metadata = { provider: 'openai', model: 'fake-model', durationMs: 5 }
   switch (request.operation) {
@@ -201,10 +315,17 @@ function defaultBehaviour(
     case 'generate_suggestions':
       return Promise.resolve({ output: { suggestions: [VALID_SUGGESTION] }, metadata })
     case 'enhance_resume':
-      return Promise.resolve({
-        output: { resume: VALID_RESUME, changeSummary: { changes: [VALID_CHANGE] } },
-        metadata,
-      })
+      lastEnhanceRequest = {
+        userPrompt: request.userPrompt ?? '',
+        structuredOutput: request.structuredOutput as {
+          contract: string
+          schema: Record<string, unknown>
+        },
+      }
+      return Promise.resolve({ output: ENHANCE_PATCH, metadata })
+    case 'structure_resume':
+      structureResumeCalls += 1
+      return Promise.resolve({ output: VALID_RESUME, metadata })
     case 'reanalyze_resume':
       return Promise.resolve({ output: VALID_REANALYSIS, metadata })
     case 'generate_cover_letter':
@@ -262,6 +383,31 @@ async function pollToTerminal(sessionId: string, operationId: string) {
     status = getEnhancementOperationStatus(sessionId, operationId)
   }
   return status
+}
+
+/**
+ * Bounded poll for the completion observer's asynchronous DB write. It never
+ * relies on a single fixed sleep: the session is re-read until the predicate
+ * holds or the bounded attempt count is exhausted.
+ */
+async function pollSession(
+  sessionId: string,
+  predicate: (session: ReturnType<typeof getEnhancementSession>) => boolean,
+): Promise<ReturnType<typeof getEnhancementSession>> {
+  let session = getEnhancementSession(sessionId)
+  for (let i = 0; i < 200 && !predicate(session); i += 1) {
+    await delay(10)
+    session = getEnhancementSession(sessionId)
+  }
+  return session
+}
+
+function startEnhancement(id: string): { operationId: string } {
+  return startResumeEnhancement(id, {
+    providerId: 'openai',
+    modelId: 'fake-model',
+    suggestions: [VALID_SUGGESTION],
+  })
 }
 
 function prepareSession(): { id: string } {
@@ -326,25 +472,117 @@ describe('M9-F canonical contract domain validation', () => {
     assert.throws(() => parseReanalysisResult(null))
   })
 
-  it('accepts a valid enhancement result and rejects malformed change summaries', () => {
-    const result = parseEnhancementResult({
-      resume: VALID_RESUME,
-      changeSummary: { changes: [VALID_CHANGE] },
-    })
-    assert.equal(result.changeSummary.changes.length, 1)
+  it('parses a resume patch and rejects malformed operations', () => {
+    const patch = parseResumePatchOutput(ENHANCE_PATCH)
+    assert.equal(patch.baseVersionId, BASE_VERSION)
+    assert.equal(patch.operations.length, 1)
+    assert.equal(patch.operations[0]?.op, 'insert')
+
+    // Unknown op, unknown section, empty/duplicate ids.
+    assert.throws(() => parseResumePatchOutput({ baseVersionId: 'x', operations: [{ ...ENHANCE_PATCH.operations[0], op: 'tweak' }] }))
+    assert.throws(() => parseResumePatchOutput({ baseVersionId: 'x', operations: [{ ...ENHANCE_PATCH.operations[0], section: 'hobbies' }] }))
+    assert.throws(() => parseResumePatchOutput({ baseVersionId: 'x', operations: [{ ...ENHANCE_PATCH.operations[0], id: '' }] }))
     assert.throws(() =>
-      parseEnhancementResult({
-        resume: VALID_RESUME,
-        changeSummary: { changes: [{ id: 'x', type: 'tweaked', section: 'skills', summary: 'y' }] },
+      parseResumePatchOutput({
+        baseVersionId: 'x',
+        operations: [ENHANCE_PATCH.operations[0], ENHANCE_PATCH.operations[0]],
       }),
     )
-    assert.throws(() => parseEnhancementResult({ resume: VALID_RESUME }))
+    // Missing per-op fields and non-integer occurrence.
+    assert.throws(() => parseResumePatchOutput({ baseVersionId: 'x', operations: [{ ...ENHANCE_PATCH.operations[0], occurrence: 1.5 }] }))
+    assert.throws(() => parseResumePatchOutput({ baseVersionId: 'x', operations: [{ ...ENHANCE_PATCH.operations[0], content: null }] }))
+    // Inconsistent addressing: replace carrying an anchor, move carrying content.
+    assert.throws(() =>
+      parseResumePatchOutput({
+        baseVersionId: 'x',
+        operations: [
+          { ...ENHANCE_PATCH.operations[0], op: 'replace', exact: 'Backend', content: 'x', anchor: 'section_end' },
+        ],
+      }),
+    )
+    assert.throws(() =>
+      parseResumePatchOutput({
+        baseVersionId: 'x',
+        operations: [
+          { ...ENHANCE_PATCH.operations[0], op: 'move', exact: 'Backend', content: 'x', anchor: 'section_end' },
+        ],
+      }),
+    )
+    assert.throws(() => parseResumePatchOutput(null))
+    assert.throws(() => parseResumePatchOutput({ baseVersionId: 'x' }))
+  })
+
+  it('validates a patch against the immutable base and applies it deterministically', () => {
+    const base = asBase(VALID_RESUME)
+    const patch = parseResumePatchOutput(ENHANCE_PATCH)
+    assert.doesNotThrow(() => validatePatchForBase(patch, base))
+
+    // A stale base version is rejected.
+    assert.throws(
+      () =>
+        validatePatchForBase(
+          { baseVersionId: computeBaseVersionId(VALID_RESUME).replace(/^./, '0'), operations: [] },
+          base,
+        ),
+    )
+
+    const composed = applyResumePatch(base.resume, patch)
+    const skills = composed.sections.find((entry) => entry.section === 'skills')
+    assert.equal(skills?.content, 'TypeScript\nNode.js\nKubernetes')
+    const summary = composed.sections.find((entry) => entry.section === 'summary')
+    assert.equal(summary?.content, 'Backend engineer.')
+  })
+
+  it('derives the change summary from applied operations', () => {
+    const base = asBase(VALID_RESUME)
+    const patch = parseResumePatchOutput(ENHANCE_PATCH)
+    const summary = buildChangeSummary(patch.operations, base)
+    assert.equal(summary.changes.length, 1)
+    assert.equal(summary.changes[0]?.id, 'change-add-kubernetes')
+    assert.equal(summary.changes[0]?.type, 'added')
+    assert.equal(summary.changes[0]?.section, 'skills')
   })
 
   it('accepts a valid cover letter and rejects empty content', () => {
-    assert.ok(parseCoverLetterResult(VALID_COVER_LETTER).content.includes('Dear'))
+    const parsed = parseCoverLetterResult(VALID_COVER_LETTER)
+    assert.ok(parsed.content.includes('Dear'))
+    assert.ok(countWords(parsed.content) >= 250 && countWords(parsed.content) <= 350)
     assert.throws(() => parseCoverLetterResult({ content: '   ' }))
     assert.throws(() => parseCoverLetterResult({}))
+  })
+
+  it('accepts the 200/400 word boundaries and normalizes CRLF', () => {
+    const lower = parseCoverLetterResult({ content: makeCoverLetter(200) })
+    const upper = parseCoverLetterResult({ content: makeCoverLetter(400) })
+    assert.equal(countWords(lower.content), 200)
+    assert.equal(countWords(upper.content), 400)
+
+    const normalized = parseCoverLetterResult({
+      content: VALID_COVER_LETTER.content.replace(/\n/g, '\r\n'),
+    })
+    assert.ok(!normalized.content.includes('\r'))
+    assert.ok(normalized.content.includes('\n\n'))
+    assert.ok(normalized.content.startsWith('Dear Hiring Manager,'))
+    assert.ok(normalized.content.endsWith('Jane Doe'))
+  })
+
+  it('rejects under-bound, over-bound, and too-few-paragraph output safely', () => {
+    for (const content of [makeCoverLetter(199), makeCoverLetter(401), makeCoverLetter(250, 2)]) {
+      assert.throws(
+        () => parseCoverLetterResult({ content }),
+        (error: unknown) => error instanceof AiResponseInvalidError,
+      )
+    }
+    const providerMarker = 'PROVIDER-CONTENT-MARKER'
+    assert.throws(
+      () =>
+        parseCoverLetterResult({
+          content: `${providerMarker} ${makeCoverLetter(150)}`,
+        }),
+      (error: unknown) =>
+        error instanceof AiResponseInvalidError &&
+        !error.message.includes(providerMarker),
+    )
   })
 
   it('re-validates forwarded payloads with safe request errors', () => {
@@ -406,9 +644,30 @@ describe('M9-F four operations end to end through the execution pipeline', () =>
     const enhanceStatus = await pollToTerminal(id, enhanceStart.operationId)
     assert.equal(enhanceStatus.state, 'completed')
     assert.equal(enhanceStatus.operation, 'enhance_resume')
+    // The final resume is composed server-side from the untouched base, so the
+    // untouched contact block is preserved and the targeted insert applied.
     assert.equal(enhanceStatus.result.resume.contact.name, 'John Doe')
-    assert.equal(enhanceStatus.result.changeSummary.changes[0].summary, VALID_CHANGE.summary)
+    const composedSkills = enhanceStatus.result.resume.sections.find(
+      (entry: { section: string }) => entry.section === 'skills',
+    )
+    assert.equal(composedSkills.content, 'TypeScript\nNode.js\nKubernetes')
+    assert.equal(
+      enhanceStatus.result.changeSummary.changes[0].summary,
+      'Added new content to this section.',
+    )
     assert.equal(enhanceStatus.steps.filter((s) => s.state === 'completed').length, 3)
+
+    // M9-H: the provider was asked for a patch, not a whole resume: the request
+    // carries only the structural skeleton and affected section content.
+    assert.ok(lastEnhanceRequest)
+    assert.equal(lastEnhanceRequest.structuredOutput.contract, 'ResumePatch')
+    const schemaJson = JSON.stringify(lastEnhanceRequest.structuredOutput.schema)
+    assert.ok(!schemaJson.includes('"resume"'))
+    assert.ok(schemaJson.includes('"operations"'))
+    assert.ok(lastEnhanceRequest.userPrompt.includes('Base version:'))
+    assert.ok(lastEnhanceRequest.userPrompt.includes('skills'))
+    // The fallback ran exactly once when the base was created.
+    assert.equal(structureResumeCalls, 1)
 
     const reanalysisStart = startEnhancementReanalysis(id, {
       providerId: 'openai',
@@ -459,6 +718,111 @@ describe('M9-F four operations end to end through the execution pipeline', () =>
   })
 })
 
+describe('M9-H follow-up session completion lifecycle', () => {
+  before(() => {
+    fakeAdapterBehaviour = (request) => defaultBehaviour(request)
+    saveAiConfiguration({ provider: 'openai', apiKey: SECRET_KEY })
+  })
+
+  it('marks the session completed with completed_at after a successful enhance', async () => {
+    const { id } = prepareSession()
+    const { operationId } = startEnhancement(id)
+    const status = await pollToTerminal(id, operationId)
+    assert.equal(status.state, 'completed')
+
+    const session = await pollSession(id, (entry) => entry.status === 'completed')
+    assert.equal(session.status, 'completed')
+    assert.ok(session.completedAt)
+    assert.ok(!Number.isNaN(Date.parse(session.completedAt)))
+  })
+
+  it('leaves the session in progress when enhance fails', async () => {
+    fakeAdapterBehaviour = () => Promise.reject(new Error('provider failed'))
+    try {
+      const { id } = prepareSession()
+      const { operationId } = startEnhancement(id)
+      const status = await pollToTerminal(id, operationId)
+      assert.equal(status.state, 'failed')
+
+      // Allow the terminal observer's microtask to settle, then confirm no
+      // completion was written.
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      const session = getEnhancementSession(id)
+      assert.equal(session.status, 'in_progress')
+      assert.equal(session.completedAt, null)
+    } finally {
+      fakeAdapterBehaviour = (request) => defaultBehaviour(request)
+    }
+  })
+
+  it('retries after a failure and completes the session', async () => {
+    fakeAdapterBehaviour = () => Promise.reject(new Error('provider failed'))
+    const { id } = prepareSession()
+    try {
+      const failedStart = startEnhancement(id)
+      const failed = await pollToTerminal(id, failedStart.operationId)
+      assert.equal(failed.state, 'failed')
+      assert.equal(getEnhancementSession(id).status, 'in_progress')
+    } finally {
+      fakeAdapterBehaviour = (request) => defaultBehaviour(request)
+    }
+
+    const retryStart = startEnhancement(id)
+    const retried = await pollToTerminal(id, retryStart.operationId)
+    assert.equal(retried.state, 'completed')
+    const session = await pollSession(id, (entry) => entry.status === 'completed')
+    assert.equal(session.status, 'completed')
+    assert.ok(session.completedAt)
+  })
+
+  it('does not reset or extend completion on reanalysis or cover letter', async () => {
+    const { id } = prepareSession()
+    const { operationId } = startEnhancement(id)
+    const enhanceStatus = await pollToTerminal(id, operationId)
+    assert.equal(enhanceStatus.state, 'completed')
+    const completed = await pollSession(id, (entry) => entry.status === 'completed')
+    const completedAt = completed.completedAt
+    assert.ok(completedAt)
+
+    const reanalysisStart = startEnhancementReanalysis(id, {
+      providerId: 'openai',
+      modelId: 'fake-model',
+      resume: enhanceStatus.result.resume,
+    })
+    const reanalysisStatus = await pollToTerminal(id, reanalysisStart.operationId)
+    assert.equal(reanalysisStatus.state, 'completed')
+    const afterReanalysis = getEnhancementSession(id)
+    assert.equal(afterReanalysis.status, 'completed')
+    assert.equal(afterReanalysis.completedAt, completedAt)
+
+    const coverStart = startEnhancementCoverLetter(id, {
+      providerId: 'openai',
+      modelId: 'fake-model',
+      resume: enhanceStatus.result.resume,
+    })
+    const coverStatus = await pollToTerminal(id, coverStart.operationId)
+    assert.equal(coverStatus.state, 'completed')
+    const afterCover = getEnhancementSession(id)
+    assert.equal(afterCover.status, 'completed')
+    assert.equal(afterCover.completedAt, completedAt)
+  })
+
+  it('keeps repeated completion idempotent', () => {
+    const { id } = prepareSession()
+    const first = markEnhancementSessionCompleted(id)
+    assert.ok(first)
+    assert.equal(first.status, 'completed')
+    assert.ok(first.completedAt)
+
+    const second = markEnhancementSessionCompleted(id)
+    assert.ok(second)
+    assert.equal(second.completedAt, first.completedAt)
+
+    discardEnhancementSession(id)
+    assert.equal(markEnhancementSessionCompleted(id), null)
+  })
+})
+
 describe('M9-F prerequisites, selection validation, and workflow lock', () => {
   before(() => {
     fakeAdapterBehaviour = (request) => defaultBehaviour(request)
@@ -477,6 +841,78 @@ describe('M9-F prerequisites, selection validation, and workflow lock', () => {
       (error: unknown) => error instanceof ValidationError,
     )
     assert.throws(() => validateStartSuggestions({ providerId: 'openai', modelId: null }))
+  })
+
+  it('refuses suggestions for a blocking role mismatch and registers no operation', async () => {
+    const { id } = prepareSession()
+    assert.throws(
+      () =>
+        startEnhancementSuggestions(id, {
+          providerId: 'openai',
+          modelId: 'fake-model',
+          analysis: MISMATCHED_ANALYSIS,
+        }),
+      (error: unknown) => error instanceof ValidationError && error.statusCode === 400,
+    )
+    // No operation and no workflow lock was taken: a valid start succeeds at once.
+    const { operationId } = startEnhancementSuggestions(id, {
+      providerId: 'openai',
+      modelId: 'fake-model',
+      analysis: VALID_ANALYSIS,
+    })
+    const status = await pollToTerminal(id, operationId)
+    assert.equal(status.state, 'completed')
+    assert.equal(status.operation, 'generate_suggestions')
+  })
+
+  it('refuses an enhancement for a blocking forwarded analysis and takes no lock', async () => {
+    const { id } = prepareSession()
+    assert.throws(
+      () =>
+        startResumeEnhancement(id, {
+          providerId: 'openai',
+          modelId: 'fake-model',
+          suggestions: [VALID_SUGGESTION],
+          analysis: MISMATCHED_ANALYSIS,
+        }),
+      (error: unknown) => error instanceof ValidationError && error.statusCode === 400,
+    )
+    // The refusal never registered an operation: the legacy client path runs.
+    const { operationId } = startEnhancement(id)
+    const status = await pollToTerminal(id, operationId)
+    assert.equal(status.state, 'completed')
+    assert.equal(status.operation, 'enhance_resume')
+  })
+
+  it('starts enhancement without a forwarded analysis and for an aligned analysis', async () => {
+    const { id } = prepareSession()
+    const legacy = startEnhancement(id)
+    const legacyStatus = await pollToTerminal(id, legacy.operationId)
+    assert.equal(legacyStatus.state, 'completed')
+
+    const aligned = startResumeEnhancement(id, {
+      providerId: 'openai',
+      modelId: 'fake-model',
+      suggestions: [VALID_SUGGESTION],
+      analysis: VALID_ANALYSIS,
+    })
+    const alignedStatus = await pollToTerminal(id, aligned.operationId)
+    assert.equal(alignedStatus.state, 'completed')
+  })
+
+  it('treats an uncertain assessment as non-blocking on the backend', async () => {
+    const { id } = prepareSession()
+    const uncertain = {
+      ...MISMATCHED_ANALYSIS,
+      roleAlignment: { ...MISMATCHED_ANALYSIS.roleAlignment, uncertain: true },
+    }
+    const { operationId } = startEnhancementSuggestions(id, {
+      providerId: 'openai',
+      modelId: 'fake-model',
+      analysis: uncertain,
+    })
+    const status = await pollToTerminal(id, operationId)
+    assert.equal(status.state, 'completed')
   })
 
   it('rejects enhancement without a selected suggestion', async () => {

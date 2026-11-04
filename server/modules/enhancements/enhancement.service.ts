@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, writeFileSync } from 'node:fs'
 import type { DatabaseSync } from 'node:sqlite'
 import { ANALYSIS_STEP_PLAN, createAnalysisRunner } from './enhancement.analysis.js'
 import {
+  cancelAiOperation,
   getAiOperationStatus,
   invalidateOperationsForSession,
   startAiOperation,
@@ -16,12 +16,17 @@ import {
   type EnhancementArtifactSummary,
   type EnhancementSession,
 } from '../../../shared/domain/enhancement.js'
-import { resolveAppPaths } from '../../config/paths.js'
 import { getDatabase } from '../../database/connection.js'
 import { runInTransaction } from '../../database/transactions.js'
 import { ConflictError, NotFoundError, ValidationError } from '../../http/api-errors.js'
 import type { AiOperationStatus } from '../../../shared/domain/ai-operation.js'
-import { sanitizeStoredBaseName } from '../documents/document.service.js'
+import {
+  ensureSessionDir,
+  removeManagedCopy,
+  removeManagedCopies,
+  removeSessionDirIfEmpty,
+  resolveStoredCopy,
+} from './enhancement.storage.js'
 import {
   deleteEnhancementSession,
   deleteEnhancementSessionsByIds,
@@ -47,32 +52,6 @@ const DAY_IN_MS = 24 * 60 * 60 * 1000
 /** The artifact kind holding the resume the user supplied for enhancement. */
 const RESUME_KIND: EnhancementArtifactKind = 'resume'
 
-function sessionDir(sessionId: string): string {
-  return join(resolveAppPaths().enhancementsDir, sessionId)
-}
-
-function ensureSessionDir(sessionId: string): string {
-  const directory = sessionDir(sessionId)
-  mkdirSync(directory, { recursive: true })
-  return directory
-}
-
-/**
- * Managed copies always use a fresh unique storage name, so a new upload can
- * never overwrite existing bytes (mirrors the documents module).
- */
-function resolveStoredCopy(
-  sessionId: string,
-  artifactId: string,
-  fileName: string,
-): { storedFileName: string; storedPath: string } {
-  const storedFileName = `${artifactId}_${sanitizeStoredBaseName(fileName)}`
-  return {
-    storedFileName,
-    storedPath: join(sessionDir(sessionId), storedFileName),
-  }
-}
-
 function toArtifactSummary(record: EnhancementArtifactRecord): EnhancementArtifactSummary {
   return {
     id: record.id,
@@ -83,6 +62,11 @@ function toArtifactSummary(record: EnhancementArtifactRecord): EnhancementArtifa
   }
 }
 
+/**
+ * Public session projection. The canonical BaseResume artifact is backend-only
+ * authority (M9-H): it is filtered out here so the frontend never receives or
+ * supplies the canonical base structure.
+ */
 function toSession(
   record: EnhancementSessionRecord,
   artifacts: EnhancementArtifactRecord[],
@@ -91,7 +75,9 @@ function toSession(
     id: record.id,
     status: record.status,
     jobDescription: record.jobDescription,
-    artifacts: artifacts.map(toArtifactSummary),
+    artifacts: artifacts
+      .filter((artifact) => artifact.kind !== 'base_resume')
+      .map(toArtifactSummary),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     completedAt: record.completedAt,
@@ -104,36 +90,6 @@ function loadSession(db: DatabaseSync, id: string): EnhancementSession {
     throw new NotFoundError('Enhancement session not found.')
   }
   return toSession(record, listEnhancementArtifactsBySession(db, id))
-}
-
-function removeManagedCopy(storedPath: string): void {
-  try {
-    unlinkSync(storedPath)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      console.error(`Failed to clean up managed copy at ${storedPath}:`, error)
-    }
-  }
-}
-
-function removeSessionDirIfEmpty(sessionId: string): void {
-  try {
-    rmdirSync(sessionDir(sessionId))
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code
-    // A non-empty directory means another copy is still in use; ENOENT means
-    // it was already gone. Neither is an error.
-    if (code !== 'ENOENT' && code !== 'ENOTEMPTY' && code !== 'EEXIST') {
-      console.error(`Failed to clean up the managed directory for session ${sessionId}:`, error)
-    }
-  }
-}
-
-/** Removes application-managed copies only. Never touches original user files. */
-export function removeManagedCopies(records: EnhancementArtifactRecord[]): void {
-  for (const record of records) {
-    removeManagedCopy(record.storedPath)
-  }
 }
 
 /**
@@ -270,6 +226,35 @@ export function discardEnhancementSession(id: string): void {
 }
 
 /**
+ * Marks a session completed from the authoritative successful `enhance_resume`
+ * operation (RESUME_ENHANCER.md §9, §14; DATA_ARCHITECTURE.md).
+ *
+ * Idempotent: a session that is already completed keeps its original
+ * `completedAt` anchor, so later operations and repeated observations never
+ * extend completion. A missing (discarded) session is a no-op.
+ */
+export function markEnhancementSessionCompleted(id: string): EnhancementSession | null {
+  const db = getDatabase()
+  const record = getEnhancementSessionById(db, id)
+  if (!record) {
+    return null
+  }
+  if (record.status === 'completed') {
+    return toSession(record, listEnhancementArtifactsBySession(db, id))
+  }
+  const now = new Date().toISOString()
+  const updated = updateEnhancementSession(db, id, {
+    status: 'completed',
+    completedAt: now,
+    updatedAt: now,
+  })
+  if (!updated) {
+    return null
+  }
+  return toSession(updated, listEnhancementArtifactsBySession(db, id))
+}
+
+/**
  * Starts the analysis AI operation for a session (AI_EXECUTION_AND_PROGRESS.md
  * §7 polling contract, ADR-006).
  *
@@ -327,4 +312,24 @@ export function getEnhancementOperationStatus(
     throw new NotFoundError('Enhancement session not found.')
   }
   return getAiOperationStatus(sessionId, operationId)
+}
+
+/**
+ * Cancels one of the session's AI operations (ADR-010, RESUME_ENHANCER.md §4).
+ *
+ * Cancellation and session cleanup are separate concerns: this stops the
+ * operation and aborts its in-flight provider request, but never discards the
+ * session or deletes artifacts. The frontend discards the abandoned session
+ * afterwards. An already-terminal operation is returned unchanged, so a
+ * completed-before-cancel race never loses a completed result.
+ */
+export function cancelEnhancementOperation(
+  sessionId: string,
+  operationId: string,
+): AiOperationStatus {
+  const db = getDatabase()
+  if (!getEnhancementSessionById(db, sessionId)) {
+    throw new NotFoundError('Enhancement session not found.')
+  }
+  return cancelAiOperation(sessionId, operationId)
 }

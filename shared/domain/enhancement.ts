@@ -25,10 +25,14 @@ export function isEnhancementSessionStatus(
 
 /**
  * Artifact kinds owned by a session. M9-A establishes the uploaded resume
- * artifact; the enhanced resume and cover letter artifacts are added by the
- * later enhancement/cover-letter slices (RESUME_ENHANCER.md §11, §12).
+ * artifact; M9-H adds the backend-owned canonical `base_resume` artifact. The
+ * enhanced resume and cover letter are canonical round-tripped contracts, not
+ * session artifacts (RESUME_ENHANCER.md §11, §12).
+ *
+ * `base_resume` is backend authority: it is never surfaced in
+ * `EnhancementArtifactSummary` / `EnhancementSession.artifacts`.
  */
-export const ENHANCEMENT_ARTIFACT_KINDS = ['resume'] as const
+export const ENHANCEMENT_ARTIFACT_KINDS = ['resume', 'base_resume'] as const
 
 export type EnhancementArtifactKind = (typeof ENHANCEMENT_ARTIFACT_KINDS)[number]
 

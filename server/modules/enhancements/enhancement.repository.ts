@@ -91,6 +91,10 @@ export function updateEnhancementSession(
 ): EnhancementSessionRecord | null {
   const assignments: string[] = []
   const params: (string | null)[] = []
+  if (patch.status !== undefined) {
+    assignments.push('status = ?')
+    params.push(patch.status)
+  }
   if (patch.jobDescription !== undefined) {
     assignments.push('job_description = ?')
     params.push(patch.jobDescription)
@@ -98,6 +102,10 @@ export function updateEnhancementSession(
   if (patch.updatedAt !== undefined) {
     assignments.push('updated_at = ?')
     params.push(patch.updatedAt)
+  }
+  if (patch.completedAt !== undefined) {
+    assignments.push('completed_at = ?')
+    params.push(patch.completedAt)
   }
   if (assignments.length === 0) {
     return getEnhancementSessionById(db, id)
@@ -157,7 +165,7 @@ export function insertEnhancementArtifact(
       throw new NotFoundError('Enhancement session not found.')
     }
     if (/UNIQUE constraint failed/i.test(message)) {
-      throw new ConflictError('A resume has already been uploaded to this session.')
+      throw new ConflictError('An artifact of this kind already exists for this session.')
     }
     throw error
   }

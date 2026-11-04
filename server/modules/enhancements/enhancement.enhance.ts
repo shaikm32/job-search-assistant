@@ -2,115 +2,91 @@ import {
   ENHANCEMENT_OPERATION_STEPS,
   type EnhancementOperationStepId,
 } from '../../../shared/domain/ai-operation.js'
-import type {
-  ChangeSummary,
-  EnhancementResult,
-  EnhancementSuggestion,
+import {
+  RESUME_SECTIONS,
+  type EnhancementResult,
+  type EnhancementSuggestion,
+  type ResumeSection,
 } from '../../../shared/domain/ai-enhancement.js'
-import { AiResponseInvalidError } from '../ai/ai.errors.js'
 import { executeAiRequest } from '../ai/ai.service.js'
 import type { AiProviderId } from '../../../shared/domain/ai.js'
 import type { AiOperationRunner } from '../ai/ai-operation.engine.js'
 import type { AiRequest } from '../ai/provider.types.js'
 import type { EnhancementArtifactRecord } from './enhancement.types.js'
-import { extractResumeText } from './resume-text.js'
-import { parseResume, parseResumeChange } from './enhancement.resume-contract.js'
+import { ensureBaseResume } from './base-resume.service.js'
+import type { BaseResume } from './base-resume.types.js'
+import { parseResumePatchOutput, validatePatchForBase } from './resume-patch.contract.js'
+import { applyResumePatch, buildChangeSummary } from './resume-patch.apply.js'
 
 /**
- * Enhance Resume operation runner (M9-F).
+ * Enhance Resume operation runner (M9-H).
  *
- * Reads the original resume text locally (ADR-005), applies only the
- * user-selected suggestions, and produces the canonical `EnhancementResult`
- * (enhanced resume + change summary) after schema and domain validation
- * (AI_ARCHITECTURE.md §6/§7/§8).
+ * The operation resolves the session's immutable canonical BaseResume on the
+ * server, sends only the affected sections plus a structural skeleton to the
+ * provider, and asks for a targeted `ResumePatch` rather than a regenerated
+ * resume. The patch is validated and applied deterministically against the
+ * untouched base, and the change summary is derived from the applied
+ * operations, never from model prose. The wire result stays
+ * `EnhancementResult { resume, changeSummary }`, so the frontend, re-analysis,
+ * and cover-letter flows are unchanged.
  *
- * Non-fabrication (AI_ARCHITECTURE.md §2/§11, PD-M9-006/027): the enhanced
- * resume must stay grounded in the uploaded resume. A JD requirement absent
- * from the resume must not be asserted as established candidate experience.
+ * Non-fabrication (AI_ARCHITECTURE.md §2/§11, PD-M9-006/027): the patch engine
+ * can only edit content that already exists in the base (plus explicit
+ * section-creation inserts), and the model never supplies whole-resume output.
  */
 
 const ENHANCE_SYSTEM_PROMPT = [
   'You are a resume enhancement assistant.',
-  'Produce an enhanced version of the candidate resume by applying ONLY the selected suggestions listed below.',
-  'Return a structured resume with a contact block and an ordered list of sections. Use only these section values: summary, experience, skills, education, projects, certifications, additional.',
-  'Also return a changeSummary listing the meaningful human-readable changes you made, each with a stable id, a type of added, rewritten, reordered, emphasized, or removed, the section, a concise summary, and optional before/after text.',
+  'You are given a job description, a structural overview of the candidate resume, the verbatim content of the sections you may change, and selected suggestions to apply.',
+  'Return a set of targeted edit operations against the resume. Do not return the whole resume.',
+  'Each operation has: a stable id (lowercase words separated by hyphens); an op of replace, insert, delete, or move; the target section; and the addressing fields required by that op.',
+  'Address existing content with exact, a literal substring copied verbatim from the provided section content, and occurrence, the 0-based match index when that exact text appears more than once (default 0). Index-only addressing is not allowed.',
+  'For replace: set exact, occurrence, and content (the replacement text). For delete: set exact and occurrence. For move: set exact, occurrence, and a destination anchor. For insert: set anchor plus content; set exact to null.',
+  'An anchor is one of section_start, section_end, before, or after. For before/after also set anchorExact (literal text in that section) and anchorOccurrence. Only insert into an absent section with anchor section_start and a heading.',
+  'Apply ONLY the selected suggestions listed below, and only to the sections marked AFFECTED.',
   'Preserve the candidate\'s real information exactly. Never fabricate employers, titles, dates, responsibilities, achievements, metrics, certifications, technologies, qualifications, education, projects, or any other candidate facts.',
   'If a selected suggestion concerns a job-description requirement not evidenced in the resume, apply it only in a way that does not assert unsupported experience as fact; phrase additions conditionally.',
-  'Do not apply any suggestion that was not selected.',
+  'When writing replacement or inserted content, preserve the existing line breaks, paragraph breaks, and bullet/list markers of the surrounding section; do not merge or split paragraphs and do not drop bullet markers.',
+  'Set baseVersionId to the value provided. Do not apply any suggestion that was not selected.',
 ].join(' ')
 
-const RESUME_SECTION_ENUM = [
-  'summary',
-  'experience',
-  'skills',
-  'education',
-  'projects',
-  'certifications',
-  'additional',
-]
-
-const RESUME_SCHEMA: Record<string, unknown> = {
+const RESUME_PATCH_SCHEMA: Record<string, unknown> = {
   type: 'object',
   additionalProperties: false,
-  required: ['contact', 'sections'],
+  required: ['baseVersionId', 'operations'],
   properties: {
-    contact: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['name', 'email', 'phone', 'location', 'links'],
-      properties: {
-        name: { type: ['string', 'null'] },
-        email: { type: ['string', 'null'] },
-        phone: { type: ['string', 'null'] },
-        location: { type: ['string', 'null'] },
-        links: { type: 'array', items: { type: 'string' } },
-      },
-    },
-    sections: {
+    baseVersionId: { type: 'string' },
+    operations: {
       type: 'array',
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['section', 'heading', 'content'],
+        required: [
+          'id',
+          'op',
+          'section',
+          'exact',
+          'occurrence',
+          'content',
+          'anchor',
+          'anchorExact',
+          'anchorOccurrence',
+          'heading',
+        ],
         properties: {
-          section: { type: 'string', enum: RESUME_SECTION_ENUM },
-          heading: { type: 'string' },
-          content: { type: 'string' },
-        },
-      },
-    },
-  },
-}
-
-const ENHANCEMENT_RESULT_SCHEMA: Record<string, unknown> = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['resume', 'changeSummary'],
-  properties: {
-    resume: RESUME_SCHEMA,
-    changeSummary: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['changes'],
-      properties: {
-        changes: {
-          type: 'array',
-          items: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['id', 'type', 'section', 'summary'],
-            properties: {
-              id: { type: 'string' },
-              type: {
-                type: 'string',
-                enum: ['added', 'rewritten', 'reordered', 'emphasized', 'removed'],
-              },
-              section: { type: 'string', enum: RESUME_SECTION_ENUM },
-              summary: { type: 'string' },
-              before: { type: ['string', 'null'] },
-              after: { type: ['string', 'null'] },
-            },
+          id: { type: 'string' },
+          op: { type: 'string', enum: ['replace', 'insert', 'delete', 'move'] },
+          section: { type: 'string', enum: [...RESUME_SECTIONS] },
+          exact: { type: ['string', 'null'] },
+          occurrence: { type: 'integer', minimum: 0 },
+          content: { type: ['string', 'null'] },
+          anchor: {
+            type: ['string', 'null'],
+            enum: ['section_start', 'section_end', 'before', 'after', null],
           },
+          anchorExact: { type: ['string', 'null'] },
+          anchorOccurrence: { type: 'integer', minimum: 0 },
+          heading: { type: ['string', 'null'] },
         },
       },
     },
@@ -118,6 +94,7 @@ const ENHANCEMENT_RESULT_SCHEMA: Record<string, unknown> = {
 }
 
 export interface EnhancementOperationInputs {
+  sessionId: string
   resume: EnhancementArtifactRecord
   jobDescription: string
   suggestions: EnhancementSuggestion[]
@@ -143,8 +120,41 @@ function serializeSuggestions(suggestions: EnhancementSuggestion[]): string {
     .join('\n')
 }
 
+function paragraphCount(content: string): number {
+  return content.split('\n').filter((line) => line.trim().length > 0).length
+}
+
+/** Structural overview of the base resume. The contact block is omitted. */
+function buildSkeleton(base: BaseResume, affected: ReadonlySet<ResumeSection>): string {
+  return RESUME_SECTIONS.map((section) => {
+    const entry = base.resume.sections.find((candidate) => candidate.section === section)
+    if (!entry) {
+      return `${section} | <MISSING> | 0${affected.has(section) ? ' | AFFECTED' : ''}`
+    }
+    const marker = affected.has(section) ? ' | AFFECTED' : ''
+    return `${section} | ${entry.heading} | ${paragraphCount(entry.content)}${marker}`
+  }).join('\n')
+}
+
+/** Verbatim content of only the affected sections. */
+function buildAffectedContent(base: BaseResume, affected: ReadonlySet<ResumeSection>): string {
+  const parts: string[] = []
+  for (const section of RESUME_SECTIONS) {
+    if (!affected.has(section)) {
+      continue
+    }
+    const entry = base.resume.sections.find((candidate) => candidate.section === section)
+    if (!entry) {
+      continue
+    }
+    parts.push(`Section: ${section}`, entry.content)
+  }
+  return parts.join('\n')
+}
+
 function buildEnhanceRequest(inputs: {
-  resumeText: string
+  base: BaseResume
+  affected: ReadonlySet<ResumeSection>
   jobDescription: string
   suggestions: EnhancementSuggestion[]
   providerId: AiProviderId
@@ -160,39 +170,22 @@ function buildEnhanceRequest(inputs: {
       'Job description:',
       inputs.jobDescription,
       '',
-      'Original resume:',
-      inputs.resumeText,
+      `Base version: ${inputs.base.baseVersionId}`,
+      '',
+      'Resume skeleton (section | heading | paragraph count):',
+      buildSkeleton(inputs.base, inputs.affected),
+      '',
+      'Affected section content:',
+      buildAffectedContent(inputs.base, inputs.affected),
       '',
       'Selected suggestions to apply:',
       serializeSuggestions(inputs.suggestions),
     ].join('\n'),
     structuredOutput: {
-      contract: 'EnhancementResult',
-      schema: ENHANCEMENT_RESULT_SCHEMA,
+      contract: 'ResumePatch',
+      schema: RESUME_PATCH_SCHEMA,
     },
   }
-}
-
-function parseChangeSummary(output: unknown): ChangeSummary {
-  if (typeof output !== 'object' || output === null || Array.isArray(output)) {
-    throw new AiResponseInvalidError()
-  }
-  const changes = (output as Record<string, unknown>).changes
-  if (!Array.isArray(changes)) {
-    throw new AiResponseInvalidError()
-  }
-  return { changes: changes.map(parseResumeChange) }
-}
-
-/** Domain validation of the Enhance Resume provider output. */
-export function parseEnhancementResult(output: unknown): EnhancementResult {
-  if (typeof output !== 'object' || output === null || Array.isArray(output)) {
-    throw new AiResponseInvalidError()
-  }
-  const raw = output as Record<string, unknown>
-  const resume = parseResume(raw.resume)
-  const changeSummary = parseChangeSummary(raw.changeSummary)
-  return { resume, changeSummary }
 }
 
 export function createEnhancementRunner(
@@ -204,23 +197,32 @@ export function createEnhancementRunner(
     const reviewUpdated: EnhancementOperationStepId = 'review_updated_resume'
 
     context.activateStep(prepareChanges)
-    const resumeText = await extractResumeText({
-      storedPath: inputs.resume.storedPath,
-      mimeType: inputs.resume.mimeType,
+    const base = await ensureBaseResume({
+      sessionId: inputs.sessionId,
+      resumeArtifact: inputs.resume,
+      providerId: inputs.providerId,
+      modelId: inputs.modelId,
     })
+    const affected = new Set(inputs.suggestions.map((suggestion) => suggestion.targetSection))
     context.completeStep(prepareChanges)
 
     context.activateStep(enhanceResume)
     const response = await executeAiRequest(
       buildEnhanceRequest({
-        resumeText: resumeText.text,
+        base,
+        affected,
         jobDescription: inputs.jobDescription,
         suggestions: inputs.suggestions,
         providerId: inputs.providerId,
         modelId: inputs.modelId,
       }),
+      context.signal,
     )
-    const result = parseEnhancementResult(response.output)
+    const patch = parseResumePatchOutput(response.output)
+    validatePatchForBase(patch, base)
+    const resume = applyResumePatch(base.resume, patch)
+    const changeSummary = buildChangeSummary(patch.operations, base)
+    const result: EnhancementResult = { resume, changeSummary }
     context.completeStep(enhanceResume)
 
     context.activateStep(reviewUpdated)

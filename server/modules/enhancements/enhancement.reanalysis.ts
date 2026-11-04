@@ -110,6 +110,7 @@ export function createReanalysisRunner(
         providerId: inputs.providerId,
         modelId: inputs.modelId,
       }),
+      context.signal,
     )
     const result = parseReanalysisResult(response.output)
     context.completeStep(recalculateMatch)

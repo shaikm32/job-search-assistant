@@ -1,11 +1,15 @@
-import { startAiOperation } from '../ai/ai-operation.engine.js'
+import { getAiOperationStatus, startAiOperation } from '../ai/ai-operation.engine.js'
 import { validateAiSelection } from '../ai/ai.service.js'
-import type { AnalysisResult } from '../../../shared/domain/ai-analysis.js'
+import {
+  shouldBlockEnhancement,
+  type AnalysisResult,
+} from '../../../shared/domain/ai-analysis.js'
 import type { Resume } from '../../../shared/domain/ai-enhancement.js'
 import type { EnhancementArtifactKind } from '../../../shared/domain/enhancement.js'
 import { getDatabase } from '../../database/connection.js'
 import { NotFoundError, ValidationError } from '../../http/api-errors.js'
 import { getEnhancementSessionById, findEnhancementArtifactByKind } from './enhancement.repository.js'
+import { markEnhancementSessionCompleted } from './enhancement.service.js'
 import type {
   EnhancementArtifactRecord,
   EnhancementSessionRecord,
@@ -84,12 +88,23 @@ function requireSessionContext(id: string): SessionContext {
 }
 
 /**
+ * Safe refusal for a blocking role mismatch (PD-M9-037, ADR-012). The backend
+ * is authoritative: no operation is registered and no workflow lock is taken.
+ */
+const ROLE_MISMATCH_MESSAGE =
+  'The resume and job description describe fundamentally different roles. Correct the resume or the job description and analyze again.'
+
+/**
  * Re-validates the canonical analysis forwarded by the frontend. A malformed
  * payload is a safe request validation error, never a provider error.
+ *
+ * The forwarded payload is validated in legacy-tolerant mode (ADR-012) so a
+ * canonical result produced before the role-alignment assessment existed still
+ * validates; a field that is present but malformed still fails safely.
  */
 function parseForwardedAnalysis(value: unknown): AnalysisResult {
   try {
-    return parseAnalysisResult(value)
+    return parseAnalysisResult(value, { requireRoleAlignment: false })
   } catch {
     throw new ValidationError('The analysis result could not be validated. Please try again.')
   }
@@ -98,6 +113,10 @@ function parseForwardedAnalysis(value: unknown): AnalysisResult {
 /**
  * Starts the Generate Suggestions AI operation. The canonical analysis is a
  * prerequisite: suggestions cannot be generated without it.
+ *
+ * A blocking role mismatch is refused before the operation is registered, so a
+ * workflow that skips suggestions client-side cannot be bypassed with a direct
+ * API call.
  */
 export function startEnhancementSuggestions(
   id: string,
@@ -106,6 +125,9 @@ export function startEnhancementSuggestions(
   const { record, resume } = requireSessionContext(id)
   const validated = validateAiSelection('generate_suggestions', input)
   const analysis = parseForwardedAnalysis(input.analysis)
+  if (shouldBlockEnhancement(analysis)) {
+    throw new ValidationError(ROLE_MISMATCH_MESSAGE)
+  }
   const started = startAiOperation({
     sessionId: id,
     operation: 'generate_suggestions',
@@ -124,6 +146,11 @@ export function startEnhancementSuggestions(
 /**
  * Starts the Enhance Resume AI operation. At least one validated selected
  * suggestion is required; only the supplied suggestions are applied.
+ *
+ * When the client forwards the analysis it was shown, a blocking role mismatch
+ * is refused before the operation is registered (ADR-012). The analysis is not
+ * persisted server-side, so an older client tab that does not forward it cannot
+ * be guarded here.
  */
 export function startResumeEnhancement(
   id: string,
@@ -132,11 +159,18 @@ export function startResumeEnhancement(
   const { record, resume } = requireSessionContext(id)
   const validated = validateAiSelection('enhance_resume', input)
   const suggestions = validateSuggestionsPayload(input.suggestions)
+  if (input.analysis !== undefined) {
+    const analysis = parseForwardedAnalysis(input.analysis)
+    if (shouldBlockEnhancement(analysis)) {
+      throw new ValidationError(ROLE_MISMATCH_MESSAGE)
+    }
+  }
   const started = startAiOperation({
     sessionId: id,
     operation: 'enhance_resume',
     steps: ENHANCEMENT_STEP_PLAN,
     runner: createEnhancementRunner({
+      sessionId: id,
       resume,
       jobDescription: record.jobDescription as string,
       suggestions,
@@ -144,6 +178,24 @@ export function startResumeEnhancement(
       modelId: validated.modelId,
     }),
   })
+  // Session completion derives from the authoritative operation state, not the
+  // frontend result. `done` resolves for every terminal state and for an
+  // invalidated (discarded) operation, so only a completed enhance is observed
+  // and any observer error is swallowed: no unhandled rejection escapes.
+  void started.done
+    .then(() => {
+      try {
+        const finalStatus = getAiOperationStatus(id, started.operationId)
+        if (finalStatus.operation === 'enhance_resume' && finalStatus.state === 'completed') {
+          markEnhancementSessionCompleted(id)
+        }
+      } catch {
+        // The operation or session no longer exists; nothing to complete.
+      }
+    })
+    .catch(() => {
+      // Observation must never surface as an unhandled rejection.
+    })
   return { operationId: started.operationId }
 }
 

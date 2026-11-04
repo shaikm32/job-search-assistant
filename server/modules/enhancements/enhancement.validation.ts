@@ -167,9 +167,15 @@ export function validateStartSuggestions(body: unknown): StartSuggestionsInput {
  * Shape-only validation for starting Enhance Resume. The selected suggestions
  * are forwarded by the frontend and re-validated by the service; at least one
  * selection is required (M9-F decision 5, PD-M9-004).
+ *
+ * The canonical analysis is forwarded too when the client holds it, so the
+ * service can refuse a blocking role mismatch before any operation starts
+ * (PD-M9-037). A pre-change client tab does not send it; the service then has no
+ * analysis to guard against and the request is accepted as before (ADR-012).
  */
 export interface StartEnhanceResumeInput extends StartAnalysisInput {
   suggestions: unknown[]
+  analysis?: unknown
 }
 
 export function validateStartEnhanceResume(body: unknown): StartEnhanceResumeInput {
@@ -180,7 +186,9 @@ export function validateStartEnhanceResume(body: unknown): StartEnhanceResumeInp
   if (!Array.isArray(body.suggestions) || body.suggestions.length === 0) {
     throw new ValidationError('Select at least one suggestion to enhance your resume.')
   }
-  return { ...selection, suggestions: body.suggestions }
+  return body.analysis === undefined
+    ? { ...selection, suggestions: body.suggestions }
+    : { ...selection, suggestions: body.suggestions, analysis: body.analysis }
 }
 
 /** Shape-only validation for starting Re-analyze with the enhanced resume. */

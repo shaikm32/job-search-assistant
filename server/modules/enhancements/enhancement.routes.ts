@@ -3,6 +3,7 @@ import { readJsonBody } from '../../http/body.js'
 import { sendJson } from '../../http/json.js'
 import {
   attachResume,
+  cancelEnhancementOperation,
   createEnhancementSession,
   discardEnhancementSession,
   getEnhancementOperationStatus,
@@ -111,6 +112,13 @@ export async function handleEnhancementRoutes(
   if (rest.length === 3 && rest[1] === 'operations' && request.method === 'GET') {
     // Authoritative execution status for one of the session's operations.
     sendJson(response, 200, getEnhancementOperationStatus(id, rest[2] as string))
+    return true
+  }
+  if (rest.length === 4 && rest[1] === 'operations' && rest[3] === 'cancel' && request.method === 'POST') {
+    // User-confirmed cancellation (ADR-010). No request body: the operation is
+    // identified by the path, and the response is the authoritative post-cancel
+    // status so the caller can tell `cancelled` from `completed`.
+    sendJson(response, 200, cancelEnhancementOperation(id, rest[2] as string))
     return true
   }
   if (rest.length === 2 && rest[1] === 'job-description' && request.method === 'PUT') {

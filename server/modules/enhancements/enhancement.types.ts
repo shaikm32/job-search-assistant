@@ -29,8 +29,10 @@ export interface EnhancementSessionInsert {
 }
 
 export interface EnhancementSessionUpdate {
+  status?: EnhancementSessionStatus
   jobDescription?: string | null
   updatedAt?: string
+  completedAt?: string | null
 }
 
 export interface EnhancementArtifactRecord {
