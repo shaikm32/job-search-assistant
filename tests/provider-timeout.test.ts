@@ -46,6 +46,8 @@ const analysisRequest: AiRequest = {
 const originalFetch = globalThis.fetch
 let chatResponse: () => Response | Promise<Response> = () =>
   new Promise<Response>(() => undefined)
+/** The combined signal the adapter passed to the chat `fetch` (test seam). */
+let lastChatSignal: AbortSignal | undefined
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -68,6 +70,7 @@ function installFetch(): void {
       return jsonResponse(200, CATALOG)
     }
     if (url.startsWith(CHAT_URL)) {
+      lastChatSignal = signal
       return new Promise<Response>((resolve, reject) => {
         const onAbort = () => {
           reject(abortError())
@@ -231,6 +234,56 @@ describe('provider request timeout (OpenRouter)', () => {
     })
     // The in-flight request is abandoned: never resolve it.
     resolveFetch(jsonResponse(200, { choices: [{ message: { content: JSON.stringify({ ok: true }) } }] }))
+  })
+
+  it('bounds the body read and parse after headers arrive', async () => {
+    chatResponse = () => {
+      const signal = lastChatSignal
+      // Headers arrive immediately; the body never completes on its own. The
+      // provider request bound must still fire and abort the body read.
+      return {
+        ok: true,
+        status: 200,
+        json: () =>
+          new Promise((_resolve, reject) => {
+            const onAbort = () => reject(abortError())
+            if (signal?.aborted) {
+              onAbort()
+              return
+            }
+            signal?.addEventListener('abort', onAbort, { once: true })
+          }),
+      } as unknown as Response
+    }
+    const startedAt = Date.now()
+    await assert.rejects(
+      () => openRouterAdapter.execute(analysisRequest, CREDENTIAL, undefined, TIMEOUT_MS),
+      (error: unknown) => {
+        assert.ok(error instanceof AiProviderTimeoutError)
+        assert.equal(error.statusCode, 504)
+        assert.equal(error.providerStatus, undefined)
+        assert.equal(error.failureCategory, 'provider_timeout')
+        assert.equal(error.retryable, false)
+        // Diagnostics never leak the credential or the provider URL.
+        assert.ok(!error.message.includes(CREDENTIAL))
+        assert.ok(!error.message.includes(CHAT_URL))
+        return true
+      },
+    )
+    assert.ok(Date.now() - startedAt >= TIMEOUT_MS - 20)
+  })
+
+  it('stays single-shot when invoked directly: a 500 issues exactly one fetch', async () => {
+    let chatCalls = 0
+    chatResponse = () => {
+      chatCalls += 1
+      return jsonResponse(500, { error: 'provider failure' })
+    }
+    await assert.rejects(
+      () => openRouterAdapter.execute(analysisRequest, CREDENTIAL, undefined, TIMEOUT_MS),
+      (error: unknown) => error instanceof AiProviderUnavailableError,
+    )
+    assert.equal(chatCalls, 1, 'retry belongs to the central executor, not the adapter')
   })
 
   it('lets a caller retry after a failure with no stale timeout state', async () => {

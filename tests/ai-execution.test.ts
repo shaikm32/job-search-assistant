@@ -152,6 +152,148 @@ describe('AI operation engine lifecycle', () => {
     assert.ok(!status.error.includes('leaked-header'))
   })
 
+  it('resets the in-flight step to pending when the runner fails', async () => {
+    resetAiOperationsForTests()
+    const started = startAiOperation({
+      sessionId: 'session-failed-step',
+      operation: 'analyze_resume',
+      steps: ['read_resume', 'analyze_match'],
+      runner: async (context) => {
+        context.activateStep('read_resume')
+        context.completeStep('read_resume')
+        context.activateStep('analyze_match')
+        throw new Error('runner failure')
+      },
+    })
+    await started.done
+    const status = getAiOperationStatus('session-failed-step', started.operationId)
+    assert.equal(status.state, 'failed')
+    assert.equal(status.currentStep, null)
+    // A terminal failure never reports an active step; completed steps stay.
+    assert.deepEqual(
+      status.steps.map((step) => step.state),
+      ['completed', 'pending'],
+    )
+  })
+
+  it('resets the in-flight step to pending when the operation times out', async () => {
+    resetAiOperationsForTests()
+    const started = startAiOperation({
+      sessionId: 'session-timeout-step',
+      operation: 'analyze_resume',
+      steps: ['read_resume', 'analyze_match'],
+      timeoutMs: 40,
+      runner: (context) => {
+        context.activateStep('read_resume')
+        return new Promise(() => undefined)
+      },
+    })
+    await started.done
+    const status = getAiOperationStatus('session-timeout-step', started.operationId)
+    assert.equal(status.state, 'timed_out')
+    assert.equal(status.currentStep, null)
+    assert.deepEqual(
+      status.steps.map((step) => step.state),
+      ['pending', 'pending'],
+    )
+  })
+
+  it('writes one sanitized terminal record with the operation id and error class', async () => {
+    resetAiOperationsForTests()
+    const logs: string[] = []
+    const originalConsoleError = console.error
+    console.error = (...args: unknown[]) => {
+      logs.push(args.map((value) => String(value)).join(' '))
+    }
+    try {
+      const started = startAiOperation({
+        sessionId: 'session-terminal-log',
+        operation: 'analyze_resume',
+        steps: ['read_resume'],
+        runner: async (context) => {
+          context.activateStep('read_resume')
+          throw new TypeError('raw provider failure leaked-header=Bearer sk-terminal-secret')
+        },
+      })
+      await started.done
+      const records = logs.filter((line) => line.startsWith('AI operation terminated'))
+      assert.equal(records.length, 1)
+      const [record] = records
+      assert.ok(record!.includes(`operationId=${started.operationId}`))
+      assert.ok(record!.includes('operation=analyze_resume'))
+      assert.ok(record!.includes('state=failed'))
+      assert.ok(record!.includes('step=read_resume'))
+      assert.ok(record!.includes('errorClass=TypeError'))
+      assert.ok(record!.includes('applicationStatus=none'))
+      assert.ok(record!.includes('providerStatus=none'))
+      assert.match(record!, /durationMs=\d+/)
+      assert.ok(!record!.includes('sk-terminal-secret'))
+      assert.ok(!record!.includes('leaked-header'))
+    } finally {
+      console.error = originalConsoleError
+    }
+  })
+
+  it('records both the application and provider status for a provider request failure', async () => {
+    resetAiOperationsForTests()
+    const logs: string[] = []
+    const originalConsoleError = console.error
+    console.error = (...args: unknown[]) => {
+      logs.push(args.map((value) => String(value)).join(' '))
+    }
+    try {
+      const started = startAiOperation({
+        sessionId: 'session-terminal-provider-status',
+        operation: 'analyze_resume',
+        steps: ['read_resume'],
+        runner: async () => {
+          throw new AiProviderRequestFailedError(undefined, {
+            providerStatus: 401,
+            failureCategory: 'invalid_credentials',
+          })
+        },
+      })
+      await started.done
+      const records = logs.filter((line) => line.startsWith('AI operation terminated'))
+      assert.equal(records.length, 1)
+      const [record] = records
+      // The application returns 502 for a provider request failure, while the
+      // original provider status (401) is preserved as a separate field.
+      assert.ok(record!.includes('applicationStatus=502'))
+      assert.ok(record!.includes('providerStatus=401'))
+      assert.ok(!record!.includes(SECRET_KEY))
+    } finally {
+      console.error = originalConsoleError
+    }
+  })
+
+  it('records both status fields as none for a timed-out operation', async () => {
+    resetAiOperationsForTests()
+    const logs: string[] = []
+    const originalConsoleError = console.error
+    console.error = (...args: unknown[]) => {
+      logs.push(args.map((value) => String(value)).join(' '))
+    }
+    try {
+      const started = startAiOperation({
+        sessionId: 'session-terminal-timeout',
+        operation: 'analyze_resume',
+        steps: ['read_resume'],
+        timeoutMs: 40,
+        runner: () => new Promise(() => undefined),
+      })
+      await started.done
+      const records = logs.filter((line) => line.startsWith('AI operation terminated'))
+      assert.equal(records.length, 1)
+      const [record] = records
+      assert.ok(record!.includes('state=timed_out'))
+      assert.ok(record!.includes('applicationStatus=none'))
+      assert.ok(record!.includes('providerStatus=none'))
+    } finally {
+      console.error = originalConsoleError
+    }
+  })
+
   it('enforces the hard timeout bound and drops late results', async () => {
     resetAiOperationsForTests()
     assert.equal(AI_OPERATION_TIMEOUT_MS, 5 * 60 * 1000)

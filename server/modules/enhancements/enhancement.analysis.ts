@@ -352,6 +352,7 @@ export function createAnalysisRunner(inputs: AnalysisOperationInputs): AiOperati
         modelId: inputs.modelId,
       }),
       context.signal,
+      context.operationDeadlineMs,
     )
     const result = parseAnalysisResult(response.output)
     context.completeStep(analyzeMatch)

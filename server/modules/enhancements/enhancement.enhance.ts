@@ -202,6 +202,7 @@ export function createEnhancementRunner(
       resumeArtifact: inputs.resume,
       providerId: inputs.providerId,
       modelId: inputs.modelId,
+      operationDeadlineMs: context.operationDeadlineMs,
     })
     const affected = new Set(inputs.suggestions.map((suggestion) => suggestion.targetSection))
     context.completeStep(prepareChanges)
@@ -217,6 +218,7 @@ export function createEnhancementRunner(
         modelId: inputs.modelId,
       }),
       context.signal,
+      context.operationDeadlineMs,
     )
     const patch = parseResumePatchOutput(response.output)
     validatePatchForBase(patch, base)

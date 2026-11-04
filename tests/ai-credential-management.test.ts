@@ -184,6 +184,74 @@ describe('AI provider credential lifecycle', () => {
     )
   })
 
+  it('makes no provider request and writes no attempt record when the stored credential is gone', async () => {
+    saveAiConfiguration({ provider: 'openai', apiKey: SECRET_OPENAI })
+    // The non-secret configuration row remains, but the OS-store credential is
+    // gone: the safe not-configured path must run before any provider request.
+    store.clear('openai')
+
+    const previousFetch = globalThis.fetch
+    const previousConsoleError = console.error
+    let fetchCalls = 0
+    const logs: string[] = []
+    globalThis.fetch = (async () => {
+      fetchCalls += 1
+      throw new Error('unexpected provider request')
+    }) as typeof globalThis.fetch
+    console.error = (...args: unknown[]) => {
+      logs.push(args.map((value) => String(value)).join(' '))
+    }
+    try {
+      await assert.rejects(
+        () => executeAiRequest(analysisRequest),
+        (error: unknown) => error instanceof AiNotConfiguredError,
+      )
+      assert.equal(fetchCalls, 0)
+      assert.equal(
+        logs.filter((line) => line.startsWith('AI provider attempt failed')).length,
+        0,
+      )
+    } finally {
+      globalThis.fetch = previousFetch
+      console.error = previousConsoleError
+    }
+  })
+
+  it('treats a whitespace-only stored credential as not configured', async () => {
+    const whitespaceOnly = '   \t  '
+    saveAiConfiguration({ provider: 'openai', apiKey: whitespaceOnly })
+    // The store keeps the value byte-faithfully; the service treats it as
+    // absent so the safe not-configured path runs before any provider request.
+    assert.equal(store.read('openai'), whitespaceOnly)
+    assert.equal(readProviderCredential('openai'), null)
+
+    const previousFetch = globalThis.fetch
+    const previousConsoleError = console.error
+    let fetchCalls = 0
+    const logs: string[] = []
+    globalThis.fetch = (async () => {
+      fetchCalls += 1
+      throw new Error('unexpected provider request')
+    }) as typeof globalThis.fetch
+    console.error = (...args: unknown[]) => {
+      logs.push(args.map((value) => String(value)).join(' '))
+    }
+    try {
+      await assert.rejects(
+        () => executeAiRequest(analysisRequest),
+        (error: unknown) => error instanceof AiNotConfiguredError,
+      )
+      assert.equal(fetchCalls, 0)
+      assert.equal(
+        logs.filter((line) => line.startsWith('AI provider attempt failed')).length,
+        0,
+      )
+    } finally {
+      globalThis.fetch = previousFetch
+      console.error = previousConsoleError
+    }
+  })
+
   it('does not save or claim configuration when secure storage is unavailable', () => {
     store.available = false
     try {
@@ -211,11 +279,28 @@ describe('provider HTTP failure classification', () => {
     assert.equal(classifyProviderHttpStatus(500).category, 'provider_unavailable')
     assert.equal(classifyProviderHttpStatus(400).category, 'request_rejected')
 
-    assert.ok(classifyProviderHttpStatus(429).retryable)
+    // Auto-retry eligibility (ADR-013): 408 and any 5xx are retryable; a rate
+    // limit is not auto-retried, so it stays an actionable manual retry.
+    assert.equal(classifyProviderHttpStatus(429).retryable, false)
     assert.ok(classifyProviderHttpStatus(500).retryable)
     assert.equal(classifyProviderHttpStatus(401).retryable, false)
     assert.equal(classifyProviderHttpStatus(403).retryable, false)
     assert.equal(classifyProviderHttpStatus(404).retryable, false)
+  })
+
+  it('classifies transient and non-transient statuses precisely for retries', () => {
+    for (const status of [408, 502, 503, 504]) {
+      const failure = classifyProviderHttpStatus(status)
+      assert.equal(failure.category, 'provider_unavailable')
+      assert.equal(failure.retryable, true)
+      assert.equal(failure.status, status)
+    }
+    for (const status of [400, 418]) {
+      const failure = classifyProviderHttpStatus(status)
+      assert.equal(failure.category, 'request_rejected')
+      assert.equal(failure.retryable, false)
+      assert.equal(failure.status, status)
+    }
   })
 
   it('throws safe errors without classifying every status as an API-key rejection', () => {
@@ -346,8 +431,11 @@ describe('OpenRouter chat-completion HTTP classification', () => {
       const logs = stubOpenRouter(entry.status)
       try {
         await openRouterAdapter.discoverModels!(SECRET_OPENROUTER)
+        // Configure OpenRouter so the request reaches the provider through the
+        // central executor, which owns the sanitized attempt diagnostics.
+        saveAiConfiguration({ provider: 'openrouter', apiKey: SECRET_OPENROUTER })
         await assert.rejects(
-          () => openRouterAdapter.execute(openRouterRequest, SECRET_OPENROUTER),
+          () => executeAiRequest(openRouterRequest),
           (error: unknown) => {
             assert.ok(error instanceof entry.expected)
             assert.match(error.message, entry.message)
@@ -374,4 +462,51 @@ describe('OpenRouter chat-completion HTTP classification', () => {
       }
     })
   }
+})
+
+describe('provider attempt diagnostics', () => {
+  it('writes one sanitized record for a transport failure and retries it', async () => {
+    saveAiConfiguration({ provider: 'openai', apiKey: SECRET_OPENAI })
+    const logs: string[] = []
+    console.error = (...args: unknown[]) => {
+      logs.push(args.map((value) => String(value)).join(' '))
+    }
+    let chatCalls = 0
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      chatCalls += 1
+      if (chatCalls === 1) {
+        // A transport failure before headers: no HTTP status exists. The raw
+        // error text must never reach a log.
+        throw new TypeError(`connect ECONNREFUSED key=${SECRET_OPENAI}`)
+      }
+      assert.ok(String(input).startsWith('https://api.openai.com/'))
+      return jsonResponse(200, {
+        choices: [{ message: { content: JSON.stringify({ atsScore: 71 }) } }],
+      })
+    }) as typeof globalThis.fetch
+    try {
+      const response = await executeAiRequest(analysisRequest)
+      assert.deepEqual(response.output, { atsScore: 71 })
+      assert.equal(chatCalls, 2, 'the transport failure is retried once')
+
+      const records = logs.filter((line) => line.startsWith('AI provider attempt failed'))
+      assert.equal(records.length, 1, 'a successful attempt is not logged')
+      const [record] = records
+      assert.match(record!, /operation=analyze_resume/)
+      assert.match(record!, /provider=openai/)
+      assert.match(record!, /model=gpt-4\.1-mini/)
+      assert.match(record!, /attempt=1\/2/)
+      assert.match(record!, /status=none/)
+      assert.match(record!, /category=provider_unavailable/)
+      assert.match(record!, /outcome=retry/)
+      assert.match(record!, /errorClass=AiProviderUnavailableError/)
+      assert.match(record!, /durationMs=\d+/)
+      assert.ok(!record!.includes(SECRET_OPENAI))
+      assert.ok(!record!.includes('ECONNREFUSED'))
+      assert.ok(!record!.includes('https://'))
+    } finally {
+      console.error = originalConsoleError
+      globalThis.fetch = originalFetch
+    }
+  })
 })

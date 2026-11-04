@@ -75,6 +75,8 @@ export async function ensureBaseResume(inputs: {
   resumeArtifact: EnhancementArtifactRecord
   providerId: AiProviderId
   modelId: string
+  /** Operation deadline (epoch ms) forwarded to the provider request. */
+  operationDeadlineMs?: number
 }): Promise<BaseResume> {
   const db = getDatabase()
   const existing = findEnhancementArtifactByKind(db, inputs.sessionId, BASE_RESUME_KIND)
@@ -102,6 +104,7 @@ async function deriveBaseResume(inputs: {
   resumeArtifact: EnhancementArtifactRecord
   providerId: AiProviderId
   modelId: string
+  operationDeadlineMs?: number
 }): Promise<{ source: BaseResume['source']; resume: Resume }> {
   const { text } = await extractResumeText({
     storedPath: inputs.resumeArtifact.storedPath,
@@ -113,13 +116,18 @@ async function deriveBaseResume(inputs: {
     return { source: 'deterministic', resume: deterministic.resume }
   }
 
-  // Confidence insufficient: exactly one LLM structuring fallback.
+  // Confidence insufficient: exactly one LLM structuring fallback. The
+  // operation deadline is forwarded (not a signal: this call's lack of
+  // cancellation is out of scope) so a retry cannot start when it would not
+  // fit inside the operation's hard bound (ADR-013).
   const response = await executeAiRequest(
     buildStructureResumeRequest({
       resumeText: text,
       providerId: inputs.providerId,
       modelId: inputs.modelId,
     }),
+    undefined,
+    inputs.operationDeadlineMs,
   )
   const parsed = parseStructuredResumeOutput(response.output)
   return { source: 'llm_fallback', resume: { ...parsed, sections: normalizeResumeSections(parsed.sections) } }

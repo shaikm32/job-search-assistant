@@ -7,6 +7,7 @@ import {
   type ProgressStepState,
 } from '../../../shared/domain/ai-operation.js'
 import { ApiError, ConflictError, NotFoundError } from '../../http/api-errors.js'
+import { readProviderErrorDiagnostics } from './ai.errors.js'
 
 /**
  * In-process AI execution engine (ADR-004).
@@ -58,6 +59,10 @@ interface AiOperationRecord {
   controller: AbortController
   /** Resolves `done` once the operation reaches a terminal state. */
   settle: () => void
+  /** Epoch ms when the operation started; used only for terminal diagnostics. */
+  startedAt: number
+  /** Absolute epoch-ms deadline of the operation's hard bound. */
+  deadlineMs: number
 }
 
 const operations = new Map<string, AiOperationRecord>()
@@ -74,6 +79,12 @@ export interface AiOperationStepContext {
    * arrives anyway is discarded by the engine.
    */
   signal: AbortSignal
+  /**
+   * Absolute epoch-ms deadline of the operation's hard bound (ADR-004).
+   * Runners forward it to `executeAiRequest` so a provider retry only starts
+   * when a full request bound plus the retry delay still fits (ADR-013).
+   */
+  operationDeadlineMs: number
 }
 
 /** The runner performs the operation's actual work and reports step progress. */
@@ -140,17 +151,63 @@ function setStepCompleted(record: AiOperationRecord, stepId: string): void {
  * Translates an unexpected failure into a safe, user-presentable message.
  * ApiErrors already carry safe, reviewed text; anything else is reduced to a
  * generic message so provider internals, payloads, and secrets never leak.
+ * Diagnostics are written once by the terminal record below, as the error
+ * shape only.
  */
 function toSafeFailureMessage(error: unknown): string {
   if (error instanceof ApiError) {
     return error.message
   }
-  // Sanitized log: only the failure shape is written, so a provider error
-  // embedding credentials or headers is never logged.
-  console.error(
-    `AI operation failed with an unexpected ${error instanceof Error ? error.name : 'unknown'} error.`,
-  )
   return GENERIC_FAILURE_MESSAGE
+}
+
+/** Error-class label for a timed-out operation (no thrown error exists). */
+const OPERATION_TIMEOUT_ERROR_CLASS = 'TimeoutError'
+
+/**
+ * Sanitized terminal diagnostics (AI_ARCHITECTURE.md §18, §19; ADR-013). Only
+ * the operation identity, state, in-flight step, error class, statuses, and
+ * duration are written — never messages, prompts, payloads, or secrets.
+ *
+ * Two distinct status layers are recorded:
+ * - `applicationStatus` is the `ApiError.statusCode` the application's API
+ *   returns for the failure (for example 502 for a provider request failure);
+ * - `providerStatus` is the original provider HTTP status when an HTTP response
+ *   was received (for example 401), and `none` when no response arrived.
+ * The attempt record's `status=` field keeps its existing meaning: the provider
+ * HTTP status.
+ */
+function logTerminalOperation(input: {
+  record: AiOperationRecord
+  state: 'failed' | 'timed_out'
+  inFlightStep: string | null
+  errorClass: string
+  applicationStatus: number | undefined
+  providerStatus: number | undefined
+}): void {
+  console.error(
+    'AI operation terminated ' +
+      `(operationId=${input.record.id}, operation=${input.record.operation}, ` +
+      `state=${input.state}, step=${input.inFlightStep ?? 'none'}, ` +
+      `errorClass=${input.errorClass}, ` +
+      `applicationStatus=${input.applicationStatus ?? 'none'}, ` +
+      `providerStatus=${input.providerStatus ?? 'none'}, ` +
+      `durationMs=${Date.now() - input.record.startedAt}).`,
+  )
+}
+
+/**
+ * Resets the in-flight step to `pending` before a failed/timed-out operation
+ * clears `currentStep`. Completed steps are preserved, the reported contract
+ * stays `pending`/`active`/`completed` (no new step state), and a terminal
+ * operation never reports an `active` step. `cancelled` deliberately keeps its
+ * pre-stop progress snapshot and does not use this helper.
+ */
+function resetInFlightStep(record: AiOperationRecord): void {
+  if (record.currentStep) {
+    record.steps.set(record.currentStep, 'pending')
+  }
+  record.currentStep = null
 }
 
 function failOperation(record: AiOperationRecord, error: unknown): void {
@@ -159,20 +216,39 @@ function failOperation(record: AiOperationRecord, error: unknown): void {
     // session was discarded); late failures must not mutate it (ADR-004).
     return
   }
+  const inFlightStep = record.currentStep
   record.state = 'failed'
   record.error = toSafeFailureMessage(error)
-  record.currentStep = null
+  resetInFlightStep(record)
   finishOperation(record)
+  const { providerStatus } = readProviderErrorDiagnostics(error)
+  logTerminalOperation({
+    record,
+    state: 'failed',
+    inFlightStep,
+    errorClass: error instanceof Error ? error.name : 'unknown',
+    applicationStatus: error instanceof ApiError ? error.statusCode : undefined,
+    providerStatus,
+  })
 }
 
 function timeoutOperation(record: AiOperationRecord): void {
   if (!isActive(record)) {
     return
   }
+  const inFlightStep = record.currentStep
   record.state = 'timed_out'
   record.error = TIMEOUT_MESSAGE
-  record.currentStep = null
+  resetInFlightStep(record)
   finishOperation(record)
+  logTerminalOperation({
+    record,
+    state: 'timed_out',
+    inFlightStep,
+    errorClass: OPERATION_TIMEOUT_ERROR_CLASS,
+    applicationStatus: undefined,
+    providerStatus: undefined,
+  })
 }
 
 function markAllStepsCompleted(record: AiOperationRecord): void {
@@ -194,6 +270,8 @@ export function startAiOperation(input: StartAiOperationInput): StartedAiOperati
     )
   }
 
+  const startedAt = Date.now()
+  const timeoutMs = input.timeoutMs ?? AI_OPERATION_TIMEOUT_MS
   const record: AiOperationRecord = {
     id: randomUUID(),
     sessionId: input.sessionId,
@@ -207,6 +285,8 @@ export function startAiOperation(input: StartAiOperationInput): StartedAiOperati
     timer: null,
     controller: new AbortController(),
     settle: () => undefined,
+    startedAt,
+    deadlineMs: startedAt + timeoutMs,
   }
   operations.set(record.id, record)
   activeBySession.set(record.sessionId, record.id)
@@ -215,7 +295,6 @@ export function startAiOperation(input: StartAiOperationInput): StartedAiOperati
     record.settle = resolve
   })
 
-  const timeoutMs = input.timeoutMs ?? AI_OPERATION_TIMEOUT_MS
   record.timer = setTimeout(() => {
     timeoutOperation(record)
     record.settle()
@@ -231,6 +310,7 @@ export function startAiOperation(input: StartAiOperationInput): StartedAiOperati
         activateStep: (stepId) => setStepActive(record, stepId),
         completeStep: (stepId) => setStepCompleted(record, stepId),
         signal: record.controller.signal,
+        operationDeadlineMs: record.deadlineMs,
       })
       if (!isActive(record)) {
         // Timed out or invalidated while running: the late result is dropped
@@ -322,10 +402,19 @@ export function invalidateOperationsForSession(sessionId: string, reason: string
   if (!record || !isActive(record)) {
     return
   }
+  const inFlightStep = record.currentStep
   record.state = 'failed'
   record.error = reason
-  record.currentStep = null
+  resetInFlightStep(record)
   finishOperation(record)
+  logTerminalOperation({
+    record,
+    state: 'failed',
+    inFlightStep,
+    errorClass: 'SessionInvalidated',
+    applicationStatus: undefined,
+    providerStatus: undefined,
+  })
   record.controller.abort()
   record.settle()
 }

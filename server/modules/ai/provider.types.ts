@@ -167,8 +167,10 @@ export interface AiProviderAdapter {
    * bounded by `PROVIDER_REQUEST_TIMEOUT_MS` (see `provider-timeout.ts`). It is
    * distinct from and shorter than the operation's hard bound: a provider
    * timeout terminates the operation with `AiProviderTimeoutError` (504) and
-   * clears the operation timer, so there is no retry and no nested timeout
-   * budget. Tests may override it; production callers do not pass it.
+   * clears the operation timer, so there is no nested timeout budget. The
+   * adapter itself is single-shot; the central `executeAiRequest` owns the
+   * bounded retry of transient failures (ADR-013). Tests may override the
+   * bound; production callers do not pass it.
    */
   execute(request: AiRequest, credential: string, signal?: AbortSignal, timeoutMs?: number): Promise<AiResponse>
 }

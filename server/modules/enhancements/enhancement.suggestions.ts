@@ -200,6 +200,7 @@ export function createSuggestionsRunner(
         modelId: inputs.modelId,
       }),
       context.signal,
+      context.operationDeadlineMs,
     )
     const suggestions = parseSuggestionsResult(response.output)
     context.completeStep(identifyOpportunities)

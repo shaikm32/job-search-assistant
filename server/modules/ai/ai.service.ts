@@ -13,6 +13,7 @@ import {
   AiResponseInvalidError,
   SecureStorageUnavailableError,
   isAbortError,
+  readProviderErrorDiagnostics,
 } from './ai.errors.js'
 import {
   deleteAiProviderConfiguration,
@@ -36,6 +37,12 @@ import {
   type AiRequest,
   type AiResponse,
 } from './provider.types.js'
+import { isRetryableProviderFailure } from './provider-http-errors.js'
+import {
+  PROVIDER_MAX_ATTEMPTS,
+  PROVIDER_REQUEST_TIMEOUT_MS,
+  PROVIDER_RETRY_DELAY_MS,
+} from './provider-timeout.js'
 
 /**
  * Message shown when the OS secure credential store cannot be used. Storage is
@@ -183,7 +190,15 @@ export function readProviderCredential(provider: AiProviderId): string | null {
   if (!store.isAvailable()) {
     return null
   }
-  return store.read(provider)
+  const credential = store.read(provider)
+  // A whitespace-only value is not a usable credential: treat it as not
+  // configured so the safe `AiNotConfiguredError` path runs before any
+  // provider request. A value with real content is returned verbatim — the
+  // store stays byte-faithful and no trimming or normalisation happens here.
+  if (credential === null || credential.trim().length === 0) {
+    return null
+  }
+  return credential
 }
 
 /**
@@ -194,9 +209,10 @@ export function readProviderCredential(provider: AiProviderId): string | null {
  * A failed refresh never fails the whole options request: with a usable
  * cached catalog the adapter keeps offering it; with no catalog to fall back
  * on, the provider simply has no models listed and is filtered out downstream,
- * leaving other configured providers available. Only the safe error name is
- * logged; raw provider details never cross this boundary
- * (AI_ARCHITECTURE.md §18).
+ * leaving other configured providers available. One record is written with the
+ * safe error name plus the already-sanitized `providerStatus` and
+ * `failureCategory` (`none` when unavailable); raw provider details never cross
+ * this boundary (AI_ARCHITECTURE.md §18).
  */
 async function refreshDynamicCatalogs(
   providers: AiSettings['providers'],
@@ -216,9 +232,12 @@ async function refreshDynamicCatalogs(
     try {
       await adapter.discoverModels(credential)
     } catch (error) {
+      const { providerStatus, failureCategory } = readProviderErrorDiagnostics(error)
       console.error(
         `AI model discovery refresh failed for provider ${provider.id} ` +
-          `(${error instanceof Error ? error.name : 'unknown error'}).`,
+          `(${error instanceof Error ? error.name : 'unknown error'}, ` +
+          `providerStatus=${providerStatus ?? 'none'}, ` +
+          `failureCategory=${failureCategory ?? 'none'}).`,
       )
     }
   }
@@ -364,6 +383,80 @@ function validateStructuredOutput(
 }
 
 /**
+ * Sanitized diagnostics for one failed provider attempt (AI_ARCHITECTURE.md
+ * §18, §19; ADR-013). Only safe metadata is written: never a credential,
+ * authorization header, prompt, resume/JD text, request body, provider response
+ * body, URL, `finish_reason`/refusal/usage, or an unfiltered error object.
+ */
+function logFailedProviderAttempt(input: {
+  operation: AiRequest['operation']
+  providerId: string
+  modelId: string
+  attempt: number
+  status: number | undefined
+  category: string | undefined
+  outcome: 'retry' | 'final'
+  error: unknown
+  durationMs: number
+}): void {
+  console.error(
+    'AI provider attempt failed ' +
+      `(operation=${input.operation}, provider=${input.providerId}, ` +
+      `model=${input.modelId}, attempt=${input.attempt}/${PROVIDER_MAX_ATTEMPTS}, ` +
+      `status=${input.status ?? 'none'}, category=${input.category ?? 'none'}, ` +
+      `outcome=${input.outcome}, ` +
+      `errorClass=${input.error instanceof Error ? input.error.name : 'unknown'}, ` +
+      `durationMs=${input.durationMs}).`,
+  )
+}
+
+/** The abort reason to propagate, always shaped as an abort error (ADR-010). */
+function abortReason(signal: AbortSignal): unknown {
+  if (signal.reason !== undefined) {
+    return signal.reason
+  }
+  const error = new Error('The operation was aborted.')
+  error.name = 'AbortError'
+  return error
+}
+
+/**
+ * Abort-aware pause between provider attempts (ADR-013): a caller cancellation
+ * during the pause propagates immediately instead of waiting out the delay.
+ */
+function delayBeforeRetry(signal: AbortSignal | undefined): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortReason(signal))
+      return
+    }
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(abortReason(signal as AbortSignal))
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, PROVIDER_RETRY_DELAY_MS)
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+/**
+ * A retry may only start when a full provider request bound plus the retry
+ * delay still fits inside the remaining operation time (ADR-013). Without an
+ * operation deadline (direct service use outside the execution engine) the
+ * retry budget is bounded by the attempt count alone.
+ */
+function canStartRetry(operationDeadlineMs: number | undefined): boolean {
+  if (operationDeadlineMs === undefined) {
+    return true
+  }
+  const requiredMs = PROVIDER_REQUEST_TIMEOUT_MS + PROVIDER_RETRY_DELAY_MS
+  return operationDeadlineMs - Date.now() >= requiredMs
+}
+
+/**
  * Executes an AI operation request through the provider abstraction:
  * AI Service → Provider Registry → Provider Adapter → External Provider
  * (AI_ARCHITECTURE.md §3).
@@ -376,14 +469,26 @@ function validateStructuredOutput(
  * inside this call and is handed solely to the adapter; it never reaches a
  * response, a log, or persisted state.
  *
+ * Transient provider failures (HTTP 408, any 5xx, pre-header transport) are
+ * retried at most once here, with an abort-aware 250 ms pause (ADR-013).
+ * Validation happens once and the credential is resolved once, outside the
+ * attempt loop. Adapters stay single-shot. Aborts are rethrown unchanged; when
+ * the attempts are exhausted the last error is thrown. A retry is skipped when
+ * the full provider request bound plus the retry delay no longer fits in the
+ * operation deadline.
+ *
  * `signal` is the owning AI operation's abort signal (ADR-010). It is forwarded
  * to the adapter so cancellation aborts the provider request; an aborted
  * request is rethrown unchanged rather than translated (it is control flow for
  * a user-cancelled operation, not a provider failure).
+ *
+ * `operationDeadlineMs` is the operation's absolute deadline (epoch ms). It is
+ * undefined for direct service use outside the execution engine.
  */
 export async function executeAiRequest(
   request: AiRequest,
   signal?: AbortSignal,
+  operationDeadlineMs?: number,
 ): Promise<AiResponse> {
   const selection = validateAiSelection(request.operation, {
     providerId: request.providerId,
@@ -402,31 +507,55 @@ export async function executeAiRequest(
     )
   }
 
-  let response: AiResponse
-  try {
-    response = await adapter.execute(
-      { ...request, providerId: selection.providerId, modelId: selection.modelId },
-      credential,
-      signal,
-    )
-  } catch (error) {
-    if (error instanceof ApiError) {
-      // Adapter-translated safe errors pass through unchanged.
-      throw error
-    }
-    if (signal?.aborted || isAbortError(error)) {
-      // A cancelled operation: never reported or logged as a provider failure.
-      throw error
-    }
-    // Raw provider errors are never surfaced or logged in detail: only the
-    // error shape is written, so credentials or headers cannot leak.
-    console.error(
-      `AI provider call failed for operation ${request.operation} ` +
-        `(${error instanceof Error ? error.name : 'unknown error'}).`,
-    )
-    throw new AiProviderRequestFailedError()
+  const resolvedRequest: AiRequest = {
+    ...request,
+    providerId: selection.providerId,
+    modelId: selection.modelId,
   }
 
-  validateStructuredOutput(request, response)
-  return response
+  for (let attempt = 1; attempt <= PROVIDER_MAX_ATTEMPTS; attempt += 1) {
+    const attemptStartedAt = Date.now()
+    try {
+      const response = await adapter.execute(resolvedRequest, credential, signal)
+      validateStructuredOutput(request, response)
+      return response
+    } catch (error) {
+      if (signal?.aborted || isAbortError(error)) {
+        // A cancelled operation: never reported, logged, or retried as a
+        // provider failure (ADR-010).
+        throw error
+      }
+      const { providerStatus, failureCategory } = readProviderErrorDiagnostics(error)
+      const shouldRetry =
+        isRetryableProviderFailure(error) &&
+        attempt < PROVIDER_MAX_ATTEMPTS &&
+        canStartRetry(operationDeadlineMs)
+      logFailedProviderAttempt({
+        operation: request.operation,
+        providerId: selection.providerId,
+        modelId: selection.modelId,
+        attempt,
+        status: providerStatus,
+        category: failureCategory,
+        outcome: shouldRetry ? 'retry' : 'final',
+        error,
+        durationMs: Date.now() - attemptStartedAt,
+      })
+      if (shouldRetry) {
+        await delayBeforeRetry(signal)
+        continue
+      }
+      if (error instanceof ApiError) {
+        // Adapter-translated safe errors pass through unchanged.
+        throw error
+      }
+      // Raw provider errors are never surfaced or logged in detail: the attempt
+      // record above writes only the error shape, so credentials, headers, and
+      // raw provider text cannot leak.
+      throw new AiProviderRequestFailedError()
+    }
+  }
+
+  // Unreachable: the loop either returns a response or throws the last error.
+  throw new AiProviderRequestFailedError()
 }

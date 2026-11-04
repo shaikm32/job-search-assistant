@@ -29,7 +29,9 @@ const { setAdaptersForTests } = await import('../server/modules/ai/provider.regi
 const { clearAiConfiguration, saveAiConfiguration } = await import(
   '../server/modules/ai/ai.service.js'
 )
-const { AiNotConfiguredError } = await import('../server/modules/ai/ai.errors.js')
+const { AiNotConfiguredError, AiProviderUnavailableError } = await import(
+  '../server/modules/ai/ai.errors.js'
+)
 const { extractResumeText } = await import('../server/modules/enhancements/resume-text.js')
 const { parseAnalysisResult } = await import(
   '../server/modules/enhancements/enhancement.analysis.js'
@@ -564,6 +566,44 @@ describe('M9-D end-to-end analysis through the execution pipeline', () => {
     assert.ok(!JSON.stringify(status).includes(SECRET_KEY))
     // Steps report the documented plan as completed.
     assert.equal(status.steps.filter((step) => step.state === 'completed').length, 5)
+  })
+
+  it('completes the analysis after one transient provider failure without duplicating steps', async () => {
+    saveAiConfiguration({ provider: 'openai', apiKey: SECRET_KEY })
+    let attempts = 0
+    fakeAdapterBehaviour = () => {
+      attempts += 1
+      if (attempts === 1) {
+        return Promise.reject(
+          new AiProviderUnavailableError(undefined, { providerStatus: 503 }),
+        )
+      }
+      return Promise.resolve({
+        output: validAnalysisOutput(),
+        metadata: { provider: 'openai', model: 'fake-model', durationMs: 5 },
+      })
+    }
+    const session = createEnhancementSession()
+    attachResume(session.id, {
+      fileName: 'resume.pdf',
+      mimeType: 'application/pdf',
+      content: buildPdf(['John Doe - Senior Developer', 'Node.js, TypeScript, React']),
+    })
+    saveJobDescription(session.id, 'Senior Node.js engineer role with React')
+    const { operationId } = startEnhancementAnalysis(session.id, {
+      providerId: 'openai',
+      modelId: 'fake-model',
+    })
+    const status = await pollToTerminal(session.id, operationId)
+
+    assert.equal(status.state, 'completed')
+    assert.equal(attempts, 2, 'the transient 503 is retried exactly once')
+    assert.equal(status.result.atsScore, 72)
+    // The deterministic step plan is reported once, with no duplicated steps.
+    const stepIds = status.steps.map((step) => step.id)
+    assert.equal(stepIds.length, 5)
+    assert.equal(new Set(stepIds).size, stepIds.length)
+    assert.ok(status.steps.every((step) => step.state === 'completed'))
   })
 
   it('fails safely on a malformed provider response', async () => {

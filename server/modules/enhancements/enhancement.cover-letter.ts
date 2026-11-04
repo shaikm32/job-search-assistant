@@ -147,6 +147,7 @@ export function createCoverLetterRunner(
         modelId: inputs.modelId,
       }),
       context.signal,
+      context.operationDeadlineMs,
     )
     const result = parseCoverLetterResult(response.output)
     context.completeStep(writeCoverLetter)

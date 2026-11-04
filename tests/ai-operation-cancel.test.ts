@@ -214,6 +214,38 @@ describe('AI operation cancellation', () => {
     assert.equal(after.error, null)
   })
 
+  it('keeps the pre-stop progress snapshot when cancelled mid-step', async () => {
+    resetAiOperationsForTests()
+    const started = startAiOperation({
+      sessionId: 'session-cancel-snapshot',
+      operation: 'analyze_resume',
+      steps: ['read_resume', 'analyze_match'],
+      runner: (context) => {
+        context.activateStep('read_resume')
+        context.completeStep('read_resume')
+        context.activateStep('analyze_match')
+        return new Promise(() => undefined)
+      },
+    })
+    await delay(5)
+
+    const status = cancelAiOperation('session-cancel-snapshot', started.operationId)
+    assert.equal(status.state, 'cancelled')
+    assert.equal(status.currentStep, null)
+    // The cancelled path deliberately keeps its progress snapshot (ADR-010),
+    // including the step that was active at the stop.
+    assert.deepEqual(
+      status.steps.map((step) => step.state),
+      ['completed', 'active'],
+    )
+    await started.done
+    const after = getAiOperationStatus('session-cancel-snapshot', started.operationId)
+    assert.deepEqual(
+      after.steps.map((step) => step.state),
+      ['completed', 'active'],
+    )
+  })
+
   it('aborts the runner signal without ever reporting a failure', async () => {
     resetAiOperationsForTests()
     const signalRef: { signal: AbortSignal | null } = { signal: null }

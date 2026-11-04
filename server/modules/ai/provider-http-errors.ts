@@ -33,7 +33,11 @@ export interface AiProviderHttpFailure {
   status: number
   /** Sanitized failure category; never provider response text. */
   category: AiProviderHttpFailureCategory
-  /** True when retrying the same request may succeed later. */
+  /**
+   * True when the central executor may retry this failure automatically
+   * (ADR-013): HTTP 408 and any 5xx. Rate limiting (429) is deliberately not
+   * auto-retried even though a later manual attempt could succeed.
+   */
   retryable: boolean
   /** Safe user-facing message for this category. */
   message: string
@@ -106,7 +110,10 @@ export function classifyProviderHttpStatus(status: number): AiProviderHttpFailur
     return {
       status,
       category: 'rate_limited',
-      retryable: true,
+      // A rate limit is not auto-retried (ADR-013): the retry budget is reserved
+      // for transient provider failures where an immediate second attempt is
+      // safe. The user still gets an actionable rate-limit message.
+      retryable: false,
       message: RATE_LIMITED_MESSAGE,
     }
   }
@@ -136,16 +143,48 @@ export function classifyProviderHttpStatus(status: number): AiProviderHttpFailur
 
 /**
  * Translates a non-OK provider HTTP response into the safe application error
- * model and records only sanitized diagnostics (provider, status, category).
- * Credentials, headers, and provider response bodies are never logged.
+ * model, carrying only sanitized diagnostic metadata (status + category).
+ * Credentials, headers, and provider response bodies are never read or logged.
+ *
+ * Diagnostics are recorded centrally once per failed attempt by
+ * `executeAiRequest`, so adapters stay free of process-level logging.
  */
-export function throwProviderHttpFailure(providerId: AiProviderId, status: number): never {
+export function throwProviderHttpFailure(
+  _providerId: AiProviderId,
+  status: number,
+): never {
   const failure = classifyProviderHttpStatus(status)
-  console.error(
-    `AI provider request failed (provider=${providerId}, status=${failure.status}, category=${failure.category}).`,
-  )
-  if (failure.retryable) {
-    throw new AiProviderUnavailableError(failure.message)
+  // The error class (and therefore the public HTTP status) stays keyed to the
+  // failure category, not to auto-retry eligibility: a 429 rate limit is still
+  // a provider-unavailable failure (503) and only its retry eligibility
+  // differs (ADR-013).
+  if (failure.category === 'provider_unavailable' || failure.category === 'rate_limited') {
+    throw new AiProviderUnavailableError(failure.message, {
+      providerStatus: failure.status,
+      failureCategory: failure.category,
+      retryable: failure.retryable,
+    })
   }
-  throw new AiProviderRequestFailedError(failure.message)
+  throw new AiProviderRequestFailedError(failure.message, {
+    providerStatus: failure.status,
+    failureCategory: failure.category,
+    retryable: false,
+  })
+}
+
+/**
+ * The single retry predicate for provider failures (ADR-013). Consumes the
+ * sanitized `retryable` classification: HTTP 408, any 5xx, and pre-header
+ * transport failures are eligible; rate limits, credential/quota/routing
+ * failures, other 4xx, invalid responses, provider timeouts, validation
+ * failures, and aborts are not.
+ */
+export function isRetryableProviderFailure(error: unknown): boolean {
+  if (error instanceof AiProviderUnavailableError) {
+    return error.retryable
+  }
+  if (error instanceof AiProviderRequestFailedError) {
+    return error.retryable
+  }
+  return false
 }

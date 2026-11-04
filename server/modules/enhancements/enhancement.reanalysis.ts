@@ -111,6 +111,7 @@ export function createReanalysisRunner(
         modelId: inputs.modelId,
       }),
       context.signal,
+      context.operationDeadlineMs,
     )
     const result = parseReanalysisResult(response.output)
     context.completeStep(recalculateMatch)

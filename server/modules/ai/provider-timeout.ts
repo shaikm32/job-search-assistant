@@ -8,12 +8,25 @@
  *
  * `PROVIDER_REQUEST_TIMEOUT_MS` is the inner provider request bound (2 min),
  * distinct from and shorter than the five-minute operation hard bound owned by
- * the execution engine (ADR-004). The engine clears its own timer when a
- * provider timeout terminates the operation, so there is no timeout x retry
- * multiplication and no nested timeout budget.
+ * the execution engine (ADR-004). It covers the full response lifecycle —
+ * headers and body read/parse — and is cleared only after parsing finishes.
+ *
+ * A transient provider failure may be retried once by the central executor
+ * (ADR-013): at most `PROVIDER_MAX_ATTEMPTS` total attempts with a
+ * `PROVIDER_RETRY_DELAY_MS` pause between them. A retry only starts when a full
+ * provider request bound plus the retry delay still fits inside the remaining
+ * operation deadline, so the timeout and retry budget together never exceed the
+ * five-minute operation bound. The engine clears its own timer when a provider
+ * timeout terminates the operation, so there is no nested timeout budget.
  */
 
 export const PROVIDER_REQUEST_TIMEOUT_MS = 120_000
+
+/** Total provider attempts per AI request (initial attempt + one retry). */
+export const PROVIDER_MAX_ATTEMPTS = 2
+
+/** Abort-aware pause between provider attempts. */
+export const PROVIDER_RETRY_DELAY_MS = 250
 
 /**
  * Combines several abort signals into one so a provider fetch can honor both

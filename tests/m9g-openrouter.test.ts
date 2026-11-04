@@ -554,6 +554,78 @@ describe('M9-G OpenRouter dynamic model discovery', () => {
       clearAiConfiguration('openrouter')
     }
   })
+
+  it('writes exactly one discovery-failure record with the sanitized provider diagnostics', async () => {
+    // A provider HTTP failure keeps the options request working and is logged
+    // once, carrying only the already-sanitized provider status and failure
+    // category (AI_ARCHITECTURE.md §18): never the credential, and never any
+    // provider response text.
+    const providerBodyText = 'openrouter-discovery-failure-marker'
+    stubFetch({
+      models: () =>
+        jsonResponse(500, {
+          error: { message: `${providerBodyText} key=${SECRET_OPENROUTER}` },
+        }),
+    })
+    saveAiConfiguration({ provider: 'openrouter', apiKey: SECRET_OPENROUTER })
+    const logs: string[] = []
+    const previousConsoleError = console.error
+    console.error = (...args: unknown[]) => {
+      logs.push(args.map((value) => String(value)).join(' '))
+    }
+    try {
+      const options = await getAiOperationOptions('analyze_resume')
+      // Catalogue degradation is unchanged: still no cached catalog, so the
+      // provider is simply not listed and nothing leaks into the response.
+      assert.ok(!options.providers.some((p) => p.id === 'openrouter'))
+      assert.ok(!JSON.stringify(options).includes(SECRET_OPENROUTER))
+
+      const records = logs.filter((line) =>
+        line.startsWith('AI model discovery refresh failed'),
+      )
+      assert.equal(records.length, 1, 'exactly one record per failed refresh')
+      assert.match(records[0]!, /providerStatus=500/)
+      assert.match(records[0]!, /failureCategory=provider_unavailable/)
+      assert.ok(!records[0]!.includes(SECRET_OPENROUTER))
+      assert.ok(!records[0]!.includes('sk-or-'))
+      assert.ok(!records[0]!.includes(providerBodyText))
+    } finally {
+      console.error = previousConsoleError
+      clearAiConfiguration('openrouter')
+    }
+  })
+
+  it('writes exactly one discovery-failure record with providerStatus=none on a transport failure', async () => {
+    // No HTTP response arrives, so the diagnostic fields fall back to `none`
+    // for the status while the failure is still classified provider_unavailable.
+    stubFetch({
+      models: () => {
+        throw new TypeError(`network down auth=Bearer ${SECRET_OPENROUTER}`)
+      },
+    })
+    saveAiConfiguration({ provider: 'openrouter', apiKey: SECRET_OPENROUTER })
+    const logs: string[] = []
+    const previousConsoleError = console.error
+    console.error = (...args: unknown[]) => {
+      logs.push(args.map((value) => String(value)).join(' '))
+    }
+    try {
+      const options = await getAiOperationOptions('analyze_resume')
+      assert.ok(!options.providers.some((p) => p.id === 'openrouter'))
+      assert.ok(!JSON.stringify(options).includes(SECRET_OPENROUTER))
+
+      const records = logs.filter((line) =>
+        line.startsWith('AI model discovery refresh failed'),
+      )
+      assert.equal(records.length, 1, 'exactly one record per failed refresh')
+      assert.match(records[0]!, /providerStatus=none/)
+      assert.match(records[0]!, /failureCategory=provider_unavailable/)
+      assert.ok(!records[0]!.includes(SECRET_OPENROUTER))
+    } finally {
+      console.error = previousConsoleError
+      clearAiConfiguration('openrouter')
+    }
+  })
 })
 
 describe('M9-G OpenRouter selection and execution through the existing pipeline', () => {
@@ -593,6 +665,70 @@ describe('M9-G OpenRouter selection and execution through the existing pipeline'
       )
     } finally {
       clearAiConfiguration('openrouter')
+    }
+  })
+
+  it('rejects an unknown model id before any provider request', async () => {
+    saveAiConfiguration({ provider: 'openrouter', apiKey: SECRET_OPENROUTER })
+    try {
+      // The catalogue is reset in beforeEach, so no model is known.
+      await assert.rejects(
+        () =>
+          executeAiRequest({
+            operation: 'analyze_resume',
+            providerId: 'openrouter',
+            modelId: 'vendor/ghost-model',
+            reasoning: null,
+            systemPrompt: 'system',
+            userPrompt: 'user',
+            structuredOutput: { contract: 'AnalysisResult', schema: {} },
+          }),
+        (error: unknown) => {
+          assert.ok(error instanceof ValidationError)
+          assert.equal((error as { providerStatus?: number }).providerStatus, undefined)
+          return true
+        },
+      )
+      assert.equal(stubCalls.length, 0, 'no provider request is made for an unknown model')
+    } finally {
+      clearAiConfiguration('openrouter')
+    }
+  })
+
+  it('writes one sanitized attempt record for a raw executor failure', async () => {
+    // A non-ApiError failure is recorded by shape only: both diagnostic fields
+    // are `none` because no provider HTTP response was received.
+    setAdaptersForTests([
+      buildFakeAdapter([{ modelId: 'fake/plain', structuredOutput: 'json_schema' }]),
+    ])
+    saveAiConfiguration({ provider: 'openai', apiKey: SECRET_FAKE_OPENAI })
+    const logs: string[] = []
+    const previousConsoleError = console.error
+    console.error = (...args: unknown[]) => {
+      logs.push(args.map((value) => String(value)).join(' '))
+    }
+    try {
+      await assert.rejects(
+        () =>
+          executeAiRequest({
+            operation: 'analyze_resume',
+            providerId: 'openai',
+            modelId: 'fake/plain',
+            reasoning: null,
+            systemPrompt: 'system',
+            userPrompt: 'user',
+            structuredOutput: { contract: 'AnalysisResult', schema: {} },
+          }),
+        (error: unknown) => error instanceof AiProviderRequestFailedError,
+      )
+      const records = logs.filter((line) => line.startsWith('AI provider attempt failed'))
+      assert.equal(records.length, 1)
+      assert.match(records[0]!, /status=none/)
+      assert.match(records[0]!, /category=none/)
+    } finally {
+      console.error = previousConsoleError
+      clearAiConfiguration('openai')
+      setAdaptersForTests(null)
     }
   })
 

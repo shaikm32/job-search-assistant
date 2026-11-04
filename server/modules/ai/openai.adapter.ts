@@ -1,8 +1,8 @@
 import {
   AiProviderRequestFailedError,
   AiProviderTimeoutError,
-  AiProviderUnavailableError,
   AiResponseInvalidError,
+  createProviderTransportFailureError,
   isAbortError,
 } from './ai.errors.js'
 import { combineSignals, PROVIDER_REQUEST_TIMEOUT_MS } from './provider-timeout.js'
@@ -40,7 +40,9 @@ import type {
  * - The hard operation timeout is owned by the execution engine (ADR-004); each
  *   provider request is additionally bounded by `PROVIDER_REQUEST_TIMEOUT_MS`
  *   (see `provider-timeout.ts`), so a hanging provider fails fast instead of
- *   consuming the whole operation budget.
+ *   consuming the whole operation budget. The adapter itself is single-shot:
+ *   transient failures are retried only by the central `executeAiRequest`
+ *   (ADR-013).
  */
 
 const OPENAI_CHAT_COMPLETIONS_URL = 'https://api.openai.com/v1/chat/completions'
@@ -176,9 +178,12 @@ export const openAiAdapter: AiProviderAdapter = {
 
     const timeoutController = new AbortController()
     const timeoutId = setTimeout(() => timeoutController.abort(), resolvedTimeoutMs)
-    let response: Response
+    // The provider request bound covers the full response lifecycle: headers
+    // and body read/parse. The timer is cleared only after parsing finishes.
+    let responseReceived = false
+    let content: string
     try {
-      response = await fetch(OPENAI_CHAT_COMPLETIONS_URL, {
+      const response = await fetch(OPENAI_CHAT_COMPLETIONS_URL, {
         method: 'POST',
         headers: {
           // The only place the credential exists: never logged, never stored.
@@ -188,19 +193,25 @@ export const openAiAdapter: AiProviderAdapter = {
         body: JSON.stringify(body),
         signal: combineSignals(signal, timeoutController.signal),
       })
+      responseReceived = true
+      content = await parseResponse(response)
     } catch (error) {
       if (isAbortError(error)) {
+        // A caller abort is rethrown unchanged (ADR-010); the provider request
+        // bound firing during headers or the body read is a provider timeout.
         if (signal?.aborted) {
           throw error
         }
         throw new AiProviderTimeoutError()
       }
-      throw new AiProviderUnavailableError()
+      if (!responseReceived) {
+        // Pre-header transport failure: no provider status, retryable (ADR-013).
+        throw createProviderTransportFailureError()
+      }
+      throw error
     } finally {
       clearTimeout(timeoutId)
     }
-
-    const content = await parseResponse(response)
 
     let output: unknown
     try {

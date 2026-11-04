@@ -118,6 +118,15 @@ describe('Windows native credential store (win32)', () => {
     store.clear('gemini')
   })
 
+  gate('round-trips a credential with outer whitespace byte-for-byte', () => {
+    // The store must not normalise on read: a value with outer whitespace and
+    // real content is returned exactly as written.
+    const value = '  sk-test-dummy-whitespace-4444444  '
+    store.write('openai', value)
+    assert.equal(store.read('openai'), value)
+    store.clear('openai')
+  })
+
   gate('a separate store instance reads the persisted credential', () => {
     // Credentials live in the OS store, not in the instance: the production
     // path reads them from later requests after the save process instance.
