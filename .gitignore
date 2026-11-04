@@ -7,25 +7,48 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
+
+# Build output and generated artifacts
 dist
 dist-server
 dist-ssr
+coverage
+*.tsbuildinfo
 *.local
 
-# Local SQLite runtime data (safety net — real data lives outside the repo)
+# Local SQLite runtime data (safety net: real data lives outside the repo)
 *.db
 *.db-wal
 *.db-shm
 *.sqlite
+*.sqlite3
 *.sqlite-wal
 *.sqlite-shm
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+
+# Temporary diagnostics and scratch output
+/tmp/
+*.tmp
+*.bak
+*.orig
+*.rej
+
+# Installed third-party OpenCode skill packs (project-authored skills are tracked)
+.opencode/skills/*/
+!.opencode/skills/bounded-discovery/
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
 .idea
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
