@@ -181,14 +181,40 @@ Tables:
 Artifact records cascade with their session; managed copies are removed by the
 service layer, and the per-session directory is removed once it holds no copies.
 
+### Artifact kinds
+
+- `resume` — the managed copy of the user-uploaded resume (PDF/DOCX).
+- `base_resume` (M9-H) — the session's **immutable canonical BaseResume**: a
+  `base-resume.json` (`application/json`) managed copy holding `schemaVersion`,
+  `baseVersionId`, `source`, `createdAt`, and the canonical `Resume` derived
+  from the uploaded document. It is created lazily on the first Enhance Resume
+  operation, written **once**, and never updated; the existing
+  `UNIQUE(session_id, artifact_kind)` constraint is what enforces exactly one
+  per session, so no migration was needed. On load the file is re-validated and
+  its version recomputed; a missing, unreadable, or tampered artifact fails
+  safely. The base is derived structure of the user's own document only — it
+  holds no provider or credential data, is never logged, and is never returned
+  to the frontend. It is filtered out of public session summaries. See ADR-009.
+
 Lifecycle (PD-M9-011 / PD-M9-012):
 
+- A session starts `in_progress`. When the backend `enhance_resume` operation
+  completes successfully, the service sets `status = 'completed'` and
+  `completed_at` to the completion time. The write is idempotent: an already
+  completed session keeps its original `completed_at`, and a missing (discarded)
+  session is a no-op.
+- Failed or timed-out enhancements leave the session `in_progress` with a null
+  `completed_at`. Re-analysis and cover-letter operations never change the
+  session status or completion anchor.
 - Only completed sessions are eligible to be retained as Recent Enhancements.
 - Retention: a maximum of 3 completed sessions within a 3-day window, with
   automatic cleanup. Cleanup runs on backend startup and before a new session
   is created.
 - Incomplete sessions are never retained as enhancement history and are
   discarded on request.
+- All artifact kinds follow these rules identically: a `base_resume` is deleted
+  with its session, so canonical base resumes exist only for live or retained
+  sessions and none survives session cleanup or retention expiry.
 
 ## AI credentials (M9)
 

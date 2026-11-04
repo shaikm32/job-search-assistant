@@ -1,7 +1,7 @@
 # AI Architecture — M9 Resume Enhancer
 
 **Status:** Approved for implementation
-**Last updated:** 2026-09-18
+**Last updated:** 2026-10-29
 
 ## 1. Purpose
 
@@ -240,12 +240,20 @@ Do not make unsupported claims regarding a provider's data retention, privacy, t
 ### Analyze Resume
 
 Input: normalized resume + JD. The normalized resume text is extracted locally
-from the stored PDF/DOCX at operation time per ADR-005; it is transient and
-never persisted.
+from the stored PDF/DOCX at operation time per ADR-005; the **raw extracted text
+is transient and never persisted** (never logged, never returned to the
+frontend). The **derived canonical structure of that resume — the session's
+immutable BaseResume — may be stored at rest** as a session artifact under the
+session's existing retention rules (see Structure Resume below and ADR-009).
 
 Output: `AnalysisResult`.
 
-Contains ATS Score, Fit Match, What's Good, and What's Missing.
+Contains the AI-estimated ATS Score, Fit Match, key strengths (each stating how it
+aligns with a specific JD requirement), key gaps categorized as
+skills/experience/evidence/qualifications and classified as a missing
+qualification or information not demonstrated in the resume, and the structured
+role-alignment assessment (resume role, JD role, assessment, uncertainty, reasons).
+The role alignment is a separate field from the score (§9, §10, ADR-012).
 
 ### Generate Suggestions
 
@@ -257,11 +265,41 @@ Suggestions are user-selectable.
 
 ### Enhance Resume
 
-Input: original normalized resume + JD + selected suggestions.
+Input: the session's immutable canonical **BaseResume** (resolved server-side;
+the frontend never receives or supplies it) + JD + selected suggestions. Only
+the sections targeted by the selected suggestions, plus a structural skeleton of
+the rest, are sent.
 
-Output: `EnhancementResult` containing enhanced resume + change summary.
+Output: a **`ResumePatch`** — a list of targeted `replace` / `insert` /
+`delete` / `move` operations against the base, addressing existing content by
+exact text plus 0-based occurrence. The provider does **not** return a resume.
+The backend validates and applies the patch deterministically against the
+untouched base and composes the enhanced `Resume` server-side, then derives the
+change summary from the applied operations. The wire result is still
+`EnhancementResult { resume, changeSummary }`, so the frontend contract is
+unchanged.
 
 Only selected suggestions are applied.
+
+Replacement and inserted text must preserve the section's existing line breaks,
+paragraph breaks, and bullet/list markers. The deterministic structurer
+preserves one blank line between body paragraphs and never emits leading or
+trailing blank lines within a section.
+
+### Structure Resume
+
+Internal, one-time base-structuring fallback (M9-H, ADR-009). Not
+user-selectable; it has no step plan or polling endpoint.
+
+Input: normalized resume text. Output: the canonical `Resume`.
+
+The backend structures the text deterministically first and calls this operation
+**only** when the confidence gate fails (score < 0.75, fewer than 2 recognized
+sections, heading coverage < 0.6, or duplicate headings). Its output is
+validated through the same canonical parse and normalization as the
+deterministic path. Because it must re-emit a whole structured resume, its
+output budget is larger and bounded (32768, capped at one quarter of the
+model's reported context window) while `enhance_resume` keeps the 8192 ceiling.
 
 ### Re-analyze
 
@@ -275,7 +313,12 @@ Input: final enhanced resume + JD.
 
 Output: `CoverLetter`.
 
-The cover letter must be grounded only in supplied resume/JD information.
+The cover letter must be grounded only in supplied resume/JD information. The
+prompt targets 250-350 words with a greeting, opening, two or three grounded
+qualification paragraphs, closing, and sign-off separated by blank lines.
+Domain validation accepts 200-400 words and at least three non-empty paragraph
+blocks; out-of-bounds or dense output is rejected as a safe
+`AiResponseInvalidError` and is retryable (no automatic provider retry).
 
 ## 7. Canonical Contracts
 
@@ -317,19 +360,42 @@ interface AnalysisResult {
   fitMatch: FitMatch;
   strengths: Strength[];
   gaps: Gap[];
+  roleAlignment?: RoleAlignment; // optional only for a pre-ADR-012 result
+}
+
+type RoleAlignmentAssessment = "aligned" | "partial" | "different";
+
+interface RoleAlignment {
+  resumeRole: string;
+  jobDescriptionRole: string;
+  assessment: RoleAlignmentAssessment;
+  uncertain: boolean; // true = insufficient evidence; wins over `assessment`
+  reasons: string[]; // >= 1 non-empty plain-language reason
 }
 
 interface Strength {
   id: string;
   title: string;
-  description: string;
+  description: string; // states how it aligns with a JD requirement
+  area?: AnalysisArea; // optional only for a pre-ADR-012 result
 }
+
+// One four-value taxonomy shared by strengths and gaps (no parallel copies).
+type AnalysisArea = "skills" | "experience" | "evidence" | "qualifications";
+
+type GapCategory = AnalysisArea;
+
+// `missing` = the resume itself shows the requirement is not met;
+// `not_demonstrated` = no resume evidence either way (never proof of absence).
+type GapKind = "missing" | "not_demonstrated";
 
 interface Gap {
   id: string;
   title: string;
   description: string;
   jdEvidence: string;
+  category?: GapCategory; // optional only for a pre-ADR-012 result
+  kind?: GapKind; // optional only for a pre-ADR-012 result
 }
 
 interface ProposedChange {
@@ -365,6 +431,29 @@ interface ChangeSummary {
   changes: ResumeChange[];
 }
 
+// M9-H: provider output of Enhance Resume. Unlike the contracts above, these
+// are backend-internal provider-output contracts and live in
+// server/modules/enhancements/, not shared/domain/: they never cross the API
+// boundary, because the backend composes the canonical Resume from the base.
+
+type ResumePatchOperationType = "replace" | "insert" | "delete" | "move";
+
+type InsertionAnchor =
+  | { kind: "section_start" }
+  | { kind: "section_end" }
+  | { kind: "text"; exact: string; occurrence: number; relation: "before" | "after" };
+
+type ResumePatchOperation =
+  | { op: "replace"; id: string; section: ResumeSection; exact: string; occurrence: number; replacement: string }
+  | { op: "insert"; id: string; section: ResumeSection; anchor: InsertionAnchor; content: string; heading?: string }
+  | { op: "delete"; id: string; section: ResumeSection; exact: string; occurrence: number }
+  | { op: "move"; id: string; section: ResumeSection; exact: string; occurrence: number; destination: InsertionAnchor };
+
+interface ResumePatch {
+  baseVersionId: string; // must match the session BaseResume; a mismatch is rejected
+  operations: ResumePatchOperation[];
+}
+
 interface ReanalysisResult {
   atsScore: number;
   fitMatch: FitMatch;
@@ -377,10 +466,10 @@ interface CoverLetter {
 
 The provider structured-output wrapper for each operation is: Generate
 Suggestions `{ suggestions: EnhancementSuggestion[] }`, Enhance Resume
-`{ resume: Resume, changeSummary: ChangeSummary }`, Re-analyze
-`{ atsScore, fitMatch }`, and Generate Cover Letter `{ content }`. Any section
-value outside `ResumeSection` is unsupported and is rejected during domain
-validation (§8).
+`{ baseVersionId, operations }` (a `ResumePatch`, §6), Structure Resume the
+canonical `Resume` (M9-H), Re-analyze `{ atsScore, fitMatch }`, and Generate
+Cover Letter `{ content }`. Any section value outside `ResumeSection` is
+unsupported and is rejected during domain validation (§8).
 
 ## 8. Validation Pipeline
 
@@ -402,6 +491,45 @@ AI service
 
 Reject malformed responses such as scores outside 0–100, unknown Fit Match values, malformed suggestions, unsupported sections, or missing required fields.
 
+For a model whose structured-output capability is `prompted_json` (no native JSON mode or schema enforcement), this parse → schema → domain pipeline is the only conformance enforcement.
+
+Analyze Resume has one validation contract in two modes (ADR-012). Provider output
+is validated in the strict mode: the structured role-alignment assessment, each
+strength's `area`, and each gap's category/kind are required, and anything present
+but malformed is rejected. The canonical analysis forwarded by the frontend to
+Generate Suggestions and Enhance Resume is re-validated in the legacy-tolerant
+mode: a result produced before those fields existed is accepted (the fields stay
+absent rather than being invented), while a present-but-malformed field still fails
+safely as a request validation error. Nothing is partially accepted in either mode.
+
+Cover Letter validation normalizes CRLF to LF, trims outer whitespace while
+preserving internal paragraph breaks, requires 200-400 words and at least three
+non-empty paragraph blocks, and returns the normalized content. Rejections use a
+safe generic `AiResponseInvalidError` message that never includes provider text.
+
+Enhance Resume adds deterministic, backend-side validation stages after parsing
+(M9-H, ADR-009). The patch is rejected as a whole — atomically, with nothing
+written and the base untouched — when:
+
+- `baseVersionId` does not match the session BaseResume, or the stored base's
+  recomputed version does not match its recorded one (stale or tampered base);
+- an `exact` string or its 0-based occurrence does not resolve in the target
+  section, or a `before`/`after` anchor text does not resolve;
+- an operation omits a field its op requires, or carries a field inconsistent
+  with it (for example `replace` without a replacement, `insert` with source
+  text);
+- non-empty edits overlap, insertions land on a coincident point, an anchor or
+  move destination falls inside another operation's interval, or a move
+  destination falls inside its own source;
+- an `insert` targets an absent section without creating it (which requires
+  `section_start` plus a heading), or a created section is also edited.
+
+Application is deterministic: validated operations become simultaneous
+per-section splices applied in descending start / descending end / ascending id
+order, so untouched sections and the contact block stay byte-identical. The
+change summary is then derived from the applied operations through
+`parseResumeChange`; the model never supplies change prose.
+
 ## 9. ATS Score
 
 ATS Score is an **AI-estimated assessment**, not an employer's actual ATS score.
@@ -409,6 +537,9 @@ ATS Score is an **AI-estimated assessment**, not an employer's actual ATS score.
 It is an integer from 0–100.
 
 The score must not be determined by keyword count alone. Evaluation should consider meaningful JD alignment such as skills, responsibilities, terminology, and relevant evidence.
+
+The score is never an input to the role-alignment assessment, and it alone never
+decides a role mismatch (ADR-012).
 
 The product must not claim that the score predicts hiring outcomes.
 
@@ -425,6 +556,22 @@ If there are no meaningful missing items, use a positive state such as:
 > **Your resume is already a strong match for this job description.**
 
 Do not manufacture gaps.
+
+Gap semantics (ADR-012): `kind: "missing"` means the resume itself shows the
+requirement is not met; `kind: "not_demonstrated"` means the resume contains no
+evidence either way. Absence from the resume is never proof that the candidate
+lacks the skill (PD-M9-006). `category` records what the gap is about
+(skills/experience/evidence/qualifications) so the results page can group it.
+
+Role alignment is a separate structured assessment of the role the resume targets
+against the role the JD targets, with its own reasons. It is judged by primary
+responsibilities, expected ownership, day-to-day activities, and required
+evidence — not by shared technical terms or tools alone, so a shared mention of
+AI, LLMs, RAG, or agents does not make roles aligned, and a missing skill within
+the same role is an ordinary gap, not a mismatch. It is never derived from
+the score, and an uncertain assessment is reported as uncertainty rather than as a
+definitive mismatch. A confident `different` assessment with at least one stated
+reason is the only state that blocks enhancement (ADR-012).
 
 ## 11. Suggestions and Non-Fabrication
 
@@ -449,6 +596,8 @@ Each AI workflow has a hard maximum of **5 minutes**.
 This is the upper bound, not the expected response time.
 
 The backend owns the timeout and must safely handle normal completion, provider errors, timeout, malformed provider response, unavailable provider, missing configuration, and cancellation where supported.
+
+User-initiated cancellation is implemented: a confirmed stop cancels the real in-process operation, aborts the provider request where the transport supports it, and discards any non-interruptible result (ADR-010, AI_EXECUTION_AND_PROGRESS.md §10).
 
 An AI workflow must never remain indefinitely in an in-progress state.
 
@@ -544,6 +693,10 @@ model belongs to the selected provider
 model supports the requested operation
 required capability exists for the operation
 
+The structured-output requirement of an operation is satisfied by `json_schema`,
+`json_object`, and `prompted_json` models alike; only a `none` model is excluded
+from operation options and rejected by selection validation.
+
 The backend must never trust model identifiers supplied by the frontend merely because they appear in the UI.
 
 ### Model defaults
@@ -592,11 +745,20 @@ Rules:
   remain available.
 - Structured-output capability for dynamic catalogs is mapped from each
   catalog entry's `supported_parameters` onto the existing shared capability
-  contract (ADR-007): `structured_outputs` advertises `json_schema`,
-  `response_format` advertises `json_object`, neither advertises `none`.
-  Properties a catalog cannot describe (for example per-operation
-  applicability) are declared conservatively, and backend capability
-  validation still applies before execution.
+  contract (ADR-007): `structured_outputs` advertises `json_schema`, otherwise
+  `response_format` advertises `json_object`, otherwise `prompted_json` (no
+  native JSON mode or schema enforcement: the adapter carries the canonical
+  schema in the prompt and the §8 validation pipeline enforces conformance).
+  OpenRouter discovery therefore never reports `none`. Properties a catalog
+  cannot describe (for example per-operation applicability) are declared
+  conservatively, and backend capability validation still applies before
+  execution.
+- Reasoning capability for dynamic catalogs is mapped the same way (ADR-011):
+  a catalog entry declaring `reasoning` in `supported_parameters` is reported as
+  reasoning-capable, and one that does not is reported as reasoning-incapable.
+  The mapping is metadata only; pre-execution capability validation for the
+  canonical operations is unchanged, so no operation is newly allowed or
+  blocked by it.
 
 ### Implementation status
 
@@ -625,6 +787,13 @@ Rules:
 - An adapter that does not support reasoning must ignore the intent rather than fail the operation.
 - Reasoning configuration must be expressible per operation, because different operations may warrant different effort.
 - No reasoning control is exposed in the M9 UI.
+- Gateways such as OpenRouter count hidden reasoning against the provider
+  completion budget (`max_tokens` covers reasoning plus content). Adapters that
+  translate reasoning must therefore bound it to a fraction of the operation's
+  output budget so it cannot consume the content budget: OpenRouter sends
+  `reasoning.max_tokens = floor(max_tokens / 4)` for models whose catalog entry
+  advertises `reasoning`, and leaves `max_tokens` itself unchanged (ADR-011).
+  Other providers keep their own configured reasoning budgets.
 
 ## 17. Provider Configuration and Settings
 
@@ -639,18 +808,23 @@ enter that provider's credential
 save/update the provider configuration
 clear the provider configuration
 view which providers are configured
+rename a configured provider's display label
+restore a configured provider's default name
 
-The user may configure multiple providers.
-
-Conceptually:
-Configured AI Providers
-
-✓ OpenAI
-✓ DeepSeek
-✓ Anthropic
-✓ Google Gemini
+The user may configure multiple providers. The Settings UI groups them into
+**Connected Providers** (configured) and **Popular Providers** (supported but
+not configured); a configured provider is never repeated in the second group.
 
 Each provider's credential is isolated from other providers.
+
+### Custom display names
+
+A configured provider may have a user-assigned display name. It is stored as
+non-secret metadata alongside the configuration row; the canonical provider ID
+remains the primary key and continues to own the credential, model catalog, and
+provider integration. A rename therefore never changes credential ownership,
+model discovery, or AI execution. Clearing the provider removes the custom name
+with the configuration; the default name can be restored explicitly.
 
 ### No model selector in Settings
 
@@ -681,7 +855,8 @@ options even when it does not match the current search text.
 The frontend receives safe metadata only:
 
 provider ID
-display name
+canonical display name
+user-assigned display name, when present
 configured/not-configured state
 provider capabilities needed by the UI
 safe model metadata where required
@@ -731,6 +906,30 @@ Distinguishable failure categories:
 - provider request failed
 - provider timeout
 - invalid/malformed AI response
+
+Within the provider-failure categories, HTTP status is classified behind the
+adapter so the user-facing message is actionable and not every provider error is
+reported as an API-key rejection: 401 invalid credentials, 403 forbidden
+access, 402 insufficient credits/quota, 404 model/provider route unavailable,
+429 rate limited, 408/5xx provider unavailable, and other 4xx request rejected.
+Only the provider, HTTP status, and sanitized category may be recorded for
+diagnostics; credentials, authorization headers, raw request bodies, and raw
+provider response text are never logged.
+
+A blocking role mismatch is not a provider failure: Generate Suggestions and
+Enhance Resume refuse it as a request validation error (HTTP 400) before any
+operation is registered, with a safe corrective message (ADR-012). It is never
+surfaced as a provider error or as an invalid response.
+
+A response that is malformed, truncated, refused, or missing required fields is
+never accepted as a partial result. Within the invalid/malformed category, the
+adapter inspects provider response diagnostics only to choose the safe message:
+a truncated response (for example `finish_reason: "length"` with no content, or
+JSON cut off by the completion limit) maps to a "ran out of response space"
+message, and a provider refusal maps to a "declined this request" message.
+`finish_reason`, refusal text and usage data never reach the client or logs.
+Strict schema and domain validation is unchanged: a truncated, partial or
+malformed payload is always an error, never a partial result.
 
 Never return raw provider SDK errors containing credentials or sensitive request information.
 

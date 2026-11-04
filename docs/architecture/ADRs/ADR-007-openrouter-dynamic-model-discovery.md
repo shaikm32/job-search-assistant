@@ -36,8 +36,9 @@ Its Chat Completions endpoint (OpenAI-compatible wire shape) is called with the
 platform `fetch`; structured output uses the mechanism advertised per model by
 the catalog's `supported_parameters` (see below): JSON-Schema enforcement when
 `structured_outputs` is declared, JSON mode when only `response_format` is
-declared, with the canonical shape carried in the prompt and enforced by the
-application validation pipeline.
+declared, and prompt-instructed JSON (`prompted_json`) when neither is declared,
+with the canonical shape carried in the prompt and enforced by the application
+validation pipeline in every case.
 
 ### Model catalogs may be discovered dynamically
 
@@ -69,13 +70,21 @@ Discovery rules:
   onto the existing shared capability contract (`AiStructuredOutputSupport`):
   a model advertising `structured_outputs` is exposed as `json_schema`, one
   advertising `response_format` (without `structured_outputs`) as `json_object`,
-  and a model advertising neither as `none`. At execution the adapter sends the
-  matching `response_format`: strict OpenAI-style JSON-Schema enforcement built
-  from the request's canonical schema (same name/strictness semantics as the
-  OpenAI adapter) for `json_schema` models, JSON mode for `json_object` models,
-  and no `response_format` for `none` models. Backend capability validation
-  (ADR-006) continues to reject `none` models for structured operations before
-  execution.
+  and a model advertising neither as `prompted_json` (no native JSON mode or
+  schema enforcement: the adapter carries the canonical schema in the prompt and
+  the application validation pipeline enforces conformance). Discovery therefore
+  never reports `none`. At execution the adapter sends the matching
+  `response_format`: strict OpenAI-style JSON-Schema enforcement built from the
+  request's canonical schema (same name/strictness semantics as the OpenAI
+  adapter) for `json_schema` models, JSON mode for `json_object` models, and no
+  `response_format` at all for `prompted_json` models, whose prompt instruction
+  already carries the required shape. Backend capability validation (ADR-006)
+  treats `json_schema`, `json_object`, and `prompted_json` as satisfying a
+  structured operation and still rejects `none` models before execution.
+- Reasoning capability is mapped from each catalog entry's
+  `supported_parameters` (`reasoning` advertises a reasoning-capable model);
+  ADR-011 owns the bounded reasoning allowance this enables.
+
 
 ### Model selection is searchable for every provider
 
@@ -107,6 +116,13 @@ provider-declared order is preserved.
   per-operation applicability is not described by the catalog at all, and
   structured-output capability is only as accurate as the catalog's
   `supported_parameters` (which does not vary per endpoint or request mode).
+- `prompted_json` is a weaker guarantee than a native JSON mode: nothing at the
+  provider boundary forces valid JSON or the declared shape, so conformance
+  depends entirely on the prompt instruction and the application validation
+  pipeline rejecting non-conforming output.
+- The preselected model for OpenRouter remains the first eligible catalog entry
+  (the provider declares no default), so a larger catalogue can change which
+  model is preselected without any user action.
 - An extra HTTP round trip occurs when options are fetched with a configured
   dynamic provider.
 

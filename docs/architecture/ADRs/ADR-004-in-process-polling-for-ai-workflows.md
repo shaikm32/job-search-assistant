@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-09-16
-**Updated:** 2026-09-16 — locked timeout bound, lifecycle states, and concurrency rule
+**Updated:** 2026-10-27 — cancellation is now implemented (see ADR-010); timeout bound, lifecycle states, and concurrency rule unchanged
 
 ## Context
 
@@ -37,10 +37,13 @@ An AI workflow must never remain indefinitely in an in-progress state.
 ```text
 queued → running → completed
                  ├→ failed
-                 └→ timed_out
+                 ├→ timed_out
+                 └→ cancelled
 ```
 
-A future cancellation mechanism may use `cancel_requested → cancelled`. Cancellation is documented but not required for M9; do not expose a cancel control unless the implementation can safely handle cancellation.
+`cancelled` is terminal and has no intermediate request state; the cancellation
+endpoint, abort propagation, idempotency and completed-before-cancel semantics
+are defined in ADR-010.
 
 On timeout: mark the operation `timed_out`, stop waiting for it, prevent late results from mutating the workflow, clean temporary operation state, and present a retry/restart action.
 

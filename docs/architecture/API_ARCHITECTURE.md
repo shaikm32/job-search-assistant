@@ -63,16 +63,17 @@ backend execution status with named progress steps
 execution-infrastructure slice the operation's canonical result is consumed by
 later slices; no analysis presentation is served yet.
 
-AI configuration (M9 Settings — currently implemented in the M9-B slice):
+AI configuration (M9 Settings):
 
 ```text
 GET    /api/ai/settings
 PUT    /api/ai/settings
-DELETE /api/ai/settings
+PATCH  /api/ai/settings/:providerId
+DELETE /api/ai/settings/:providerId
 GET    /api/ai/operation-options?operation=...
 ```
 
-The AI configuration endpoints return and accept safe configuration state only. The API key may be submitted to save a credential, but it is never returned. Credentials are stored using OS-native secure credential storage and are never written to SQLite or to ordinary application files.
+The AI configuration endpoints return and accept safe configuration state only. The API key may be submitted to save a credential, but it is never returned. Credentials are stored using OS-native secure credential storage and are never written to SQLite or to ordinary application files. `PATCH /api/ai/settings/:providerId` accepts a non-secret `{ displayName }` (or `null` to restore the default), changes only the label, and leaves the canonical provider ID and credential untouched. `DELETE /api/ai/settings/:providerId` removes only that provider's credential and configuration.
 
 `GET /api/ai/operation-options` returns configured providers and their models for one AI operation (AI_ARCHITECTURE.md §15). Since M9-G, configured providers with dynamically discovered catalogs (for example OpenRouter, ADR-007) are refreshed from the provider's model API while building the response; discovery failures never leak provider details and never block other configured providers.
 

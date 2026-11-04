@@ -2,6 +2,12 @@
 
 **Status:** Accepted
 **Date:** 2026-09-18
+**Amended by:** ADR-009 (M9-H). The "never persisted" rule is scoped to the
+**raw extracted text** only. The **derived canonical BaseResume** — the
+structured `Resume` produced *from* that text by deterministic structuring (or
+by the one-time `structure_resume` fallback) — **may** be stored at rest as a
+session artifact. All extraction rules below are otherwise unchanged and remain
+in force.
 
 ## Context
 
@@ -31,10 +37,22 @@ subsystem: it is a focused module inside the existing enhancements module.
 
 ## Decision rules
 
-- Extraction happens only in memory, inside the AI operation. The extracted
-  text is **never persisted, never logged, and never returned to the
+- Extraction happens only in memory, inside the AI operation. The **raw
+  extracted text is never persisted, never logged, and never returned to the
   frontend** (SECURITY.md redaction, PD-M9-025, ADR-004 "operation state is
-  transient").
+  transient"). This rule applies to the extracted text as such; it is not a ban
+  on derived structures — see the data-at-rest rule below and ADR-009.
+- **Derived structure at rest (M9-H).** The canonical `Resume` derived from the
+  extracted text — the session's immutable **BaseResume** — is stored as a
+  backend-managed `base_resume` JSON artifact in the session's enhancement
+  directory and registered in `enhancement_artifacts`. It contains only content
+  already present in the user's own uploaded resume, holds no provider or
+  credential data, and lives under the existing session retention and cleanup
+  rules (DATA_ARCHITECTURE.md "Enhancement artifacts"), so it is deleted with
+  its session. It is never logged, never returned to the frontend, and never
+  leaves the backend except as provider input to the AI operations of its own
+  session (`structure_resume` and the `enhance_resume` calls that read its
+  sections). See ADR-009 for the BaseResume and ResumePatch decisions.
 - The original uploaded binary is only read; it is never modified.
 - Normalized resume text and the job description are passed to the AI
   abstraction through the existing provider-agnostic `AiRequest.userPrompt`.
@@ -76,3 +94,9 @@ subsystem: it is a focused module inside the existing enhancements module.
   inherited from the upload pipeline, and the five-minute operation timeout
   (ADR-004).
 - Neither library executes embedded document content; both parse structurally.
+- Since the M9-H amendment, extraction is still an in-memory, per-operation
+  activity, but its result is no longer the end of the line: the text feeds
+  deterministic structuring that persists a canonical BaseResume for the
+  session. The persisted artifact is a derived structure of the user's own
+  document, not a verbatim copy of the extraction intermediate, and it inherits
+  the session's retention and cleanup.

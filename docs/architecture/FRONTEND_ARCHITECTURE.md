@@ -80,14 +80,28 @@ Routes currently implemented include:
 /people/new             Add Person
 /people/:id              Person Detail
 /people/:id/edit        Edit Person
-/resume-enhancer        Resume Enhancer starting page
-/resume-enhancer/:sessionId  Resume Enhancer session
+/resume-enhancer        Resume Enhancer (single screen; progress dialog over the page)
 /settings               Settings
 ```
 
 Navigation should not cause a full browser page reload.
 
-The M9 Resume Enhancer session route is a resumable workflow route. Its exact workflow states are defined by the Resume Enhancer feature specification and execution architecture.
+The M9 Resume Enhancer workflow runs on the single `/resume-enhancer` screen and is not URL-addressable per session. Progress is a modal dialog on that same route, not a separate screen. Its exact workflow states are defined by the Resume Enhancer feature specification and execution architecture.
+
+## Modal dialogs
+
+Modal dialogs are portaled to `document.body` so fixed positioning is relative to
+the viewport and they stack above the application shell. While a modal is open the
+shell is marked `inert` so focus cannot leave the dialog, and focus is moved into
+the dialog on open and returned to the triggering control (or the next meaningful
+target) on close. Dialogs are labelled (`role="dialog"`, `aria-modal`,
+`aria-labelledby`) and dismissible by Escape only where the interaction defines
+what Escape does.
+
+The Resume Enhancer progress dialog deliberately dims and blurs the page behind it
+because the feature specification requires the populated form to remain visible
+but non-interactive. Confirmation dialogs keep the existing `.dialog-backdrop`
+convention (dimmed, no backdrop blur) and stack above the progress dialog.
 
 ## Application shell
 

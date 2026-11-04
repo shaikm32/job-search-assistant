@@ -1,6 +1,6 @@
 # Product Decisions
 
-**Last updated:** 2026-09-16
+**Last updated:** 2026-10-29
 
 ## M9 — Resume Enhancer
 
@@ -9,6 +9,8 @@ There is no master resume. The user uploads whichever existing resume they want 
 
 ### PD-M9-002 — JD-Relative Analysis
 Analysis is relative to the supplied JD and displays ATS Score, Fit Match, What's Good, and What's Missing. Generic overall gap reporting is not part of M9.
+
+**Scope note:** the analysis additionally reports a structured role-alignment assessment (the role the resume targets vs the role the JD targets), categorizes each gap as skills/experience/evidence/qualifications, distinguishes a missing qualification from information not demonstrated in the resume, and derives recommended next steps from those gaps (PD-M9-037). What's Good and What's Missing are presented as **Key Strengths** and **Key Gaps**.
 
 ### PD-M9-003 — Overall ATS Score
 M9 displays one AI-estimated ATS Score from 0–100. Category scores are not required.
@@ -82,11 +84,11 @@ During an AI operation, the user selects one of their configured providers and t
 
 The selected provider and model are part of the AI operation request; the backend validates provider/model compatibility before execution.
 
-There is no global active provider. The application may remember the last-used provider/model per feature as a convenience preference, and that preference is not provider configuration.
+There is no global active provider. The application may remember the last-used provider per feature as a convenience preference, and that preference is not provider configuration; it never remembers or preselects a model.
 
-The application selects a sensible default model but the user may choose another supported model.
+No model is selected by default: the user must explicitly choose a model before an AI operation can start. Selecting a provider never selects a model automatically, and no fallback (provider default, stored preference, or session data) may preselect one.
 
-The model list is searchable for every provider: the user can type to filter models by name or identifier, and the current selection is never changed by filtering (M9-G).
+The model list is searchable for every provider: the user can type to filter models by name or identifier, only matching models are listed while filtering, and the current selection is never changed by filtering (M9-G).
 
 Reasoning-effort selection is not exposed in M9; the architecture remains capable of representing it.
 
@@ -174,3 +176,54 @@ Only one AI operation may run for a given enhancement session at a time.
 
 A second request for the same session must not start concurrently, and the workflow stays locked while processing.
 The application renders the final resume and cover letter in its own clean, structured, ATS-friendly template rather than preserving arbitrary source formatting.
+
+### PD-M9-034 — Inline Resume Enhancer Workflow With Navigation Lock
+The Resume Enhancer is a single-screen workflow on `/resume-enhancer`.
+
+Submitting the intake and confirming the privacy disclosure starts analysis on that page: there is no separate session screen, no session URL, no Back button, no "you can safely leave" message, and no session-only resume summary. Progress, suggestions, review and Done all render inline.
+
+While the initial analysis is being prepared or running, navigation is locked: header navigation, programmatic route changes and browser Back/Forward are rejected, and the lock is released when the analysis completes, fails, times out or is stopped. Address-bar/full-page navigation cannot be blocked silently; the browser's own confirmation is the only guard, and the product does not claim otherwise.
+
+### PD-M9-035 — User-Confirmed Stop Cancels And Restores The Intake
+While the initial analysis is being prepared or running, a visible **Stop Analysis** action asks for confirmation. It is not offered for the later suggestion, enhancement, re-analysis or cover-letter operations, where **Discard Enhancement** remains the abandonment action. Declining leaves the analysis running.
+
+Confirming stop cancels the real backend operation, discards the incomplete session and restores the exact intake (the selected resume file, the full job description, the selected provider and the explicitly selected model) so the user can retry immediately. No model is ever selected automatically. An operation that completed before the stop arrived is kept instead of being discarded.
+
+A completed result is not an abandonment: Done clears the intake and retains the completed session under the retention rules.
+
+**Scope note:** the Stop scope and navigation-lock coverage defined by PD-M9-035 are extended by PD-M9-036; its confirmation, input-restoration and completed-before-cancel semantics remain unchanged. On the analysis-results screen **Back to Edit Inputs** replaces Discard as the abandonment action, and Discard remains only on the enhancement-review screen (PD-M9-037).
+
+### PD-M9-036 — Progress Dialog And Stop In Every Processing Stage
+Resume Enhancer progress is presented in a centered modal dialog over `/resume-enhancer`, not on a separate screen or route. The populated page stays rendered behind the dialog and is dimmed and blurred; it is non-interactive while the dialog is open. The dialog shows only the named stages reported by the backend operation (plus a single "Preparing…" state before an operation id exists); it never invents stages, status text, or percentage progress.
+
+A Stop/Cancel action is available during every processing stage — preparation, initial analysis, suggestion generation, enhancement, re-analysis, cover-letter generation, and while a provider request is in flight. It reads **Stop Analysis** during preparation and the initial analysis and **Cancel** during the later stages. It always requires confirmation: the decline action is **Keep Processing** and leaves the operation running to completion; the confirm action is **Stop** and is presented as destructive. Escape opens the same confirmation and never cancels directly.
+
+Confirming Stop aborts the in-flight provider request where the architecture supports it, starts no later stage, and prevents a late response from overwriting the UI. Cancellation is never treated as a successful enhancement. The attempt — including any unsaved results — is discarded, and the form returns with the resume file, job description, provider and model preserved. This applies equally to later stages: stopping re-analysis or cover-letter generation abandons the already-rendered enhancement rather than keeping it, so cancellation behaves the same way everywhere.
+
+Navigation is locked while any processing stage is being prepared or running, not only the initial analysis. The lock releases on completion, failure, cancellation, or discard. Address-bar/full-page navigation remains warn-only through the browser's native confirmation.
+
+### PD-M9-037 — Structured Analysis Results And Role-Mismatch Guard
+The analysis-results screen is one page with a fixed hierarchy: header (**Resume Analysis Results**, a subtitle, the overall match status, the AI-estimated ATS Score with its disclaimer, and a role-alignment indicator showing both detected roles), role alignment, key strengths, key gaps, recommended next steps, and the two results actions.
+
+The overall match status wording is **Strong Match** / **Partial Match** / **Poor Match**, derived from Fit Match. The role-alignment assessment (resume role, JD role, aligned / partially aligned / fundamentally different, plain-language reasons) is a separate structured field produced by the analysis; the ATS Score and Fit Match never decide it, no role names or role pairs are hardcoded, a normal skills or experience gap is not a mismatch, and insufficient evidence is presented as **Uncertain** rather than as a verdict.
+
+Key strengths and key gaps are grouped by the same four areas — skills / experience / evidence / qualifications — in the same fixed order. Each gap explains in plain language what the resume is missing or does not demonstrate and why that requirement matters for the role, and distinguishes a **Missing qualification** (the resume shows the requirement is not met) from **Not demonstrated** (the resume has no evidence either way); absence from the resume never means the candidate lacks the skill. Recommended next steps are derived deterministically from those gaps, never from model prose.
+
+A fundamental role mismatch is a separate, explicit state: the results screen shows the prominent warning **Resume and Job Description Don't Match**, names both detected roles, explains that they have substantially different responsibilities and requirements, and gives the corrective next step. Enhancement suggestions are not requested or shown, there is no manual override, the primary Enhance Resume action is not offered, and the user corrects the inputs instead.
+
+The analysis-results screen has exactly two actions: primary **Enhance Resume** (with the selected suggestions; disabled only when enhancement genuinely cannot proceed, with a visible explanation) and secondary **Back to Edit Inputs** (immediate, no confirmation, inputs preserved, only the server-side session copy discarded). **Discard Enhancement** is removed from the analysis-results screen and remains only on the enhancement-review screen.
+
+A previously stored analysis without a role-alignment assessment still renders, with an honest degraded presentation ("Role alignment was not assessed", gaps under **Other requirements** without a classification badge). No assessment or classification is invented for it.
+
+### PD-M9-038 — Provider Management In Settings
+Settings is presented as **Providers** with the subtitle **Connect and manage model providers**.
+
+Configured providers appear under **Connected Providers** in one list; every supported provider that is not configured appears under **Popular Providers**. A configured provider is never shown in both sections. Provider rows use the canonical supported-provider registry, and only implemented providers are offered.
+
+Each connected provider row shows its icon, name, an **API key** credential badge, an API-key update action, and a three-dot menu containing **Rename** and **Remove**.
+
+- **Update API key** opens a masked entry dialog. The saved key is never displayed. Saving replaces the credential through the operating system's secure credential store.
+- **Rename** assigns a custom display name (prefilled with the current name) and offers **Restore default**. Renaming changes only the label: the canonical provider ID, credential ownership, model discovery, and provider integration are unchanged.
+- **Remove** asks for confirmation, explains that the saved API key and provider configuration will be removed, and removes only that provider.
+
+Connecting a popular provider asks for its API key, saves it securely, and moves the provider into Connected Providers. Success and failure are reported clearly. Settings still does not contain model selection.
