@@ -6,6 +6,8 @@ versioning. The project is pre-1.0, so minor releases may include breaking chang
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-11-04
+
 ### Added
 
 - **Sanitized provider diagnostics.** Every failed provider attempt and every
