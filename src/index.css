@@ -58,6 +58,12 @@
   --glass: rgba(16, 20, 40, 0.4);
   --glass-elevated: rgba(20, 25, 50, 0.52);
   --glass-strong: rgba(24, 29, 56, 0.7);
+  /* glass-floating: a floating overlay (the model dropdown listbox) must
+     obscure the content behind it, unlike the lower glass tiers, which are
+     meant to transmit. Deliberately (near-)opaque: the alpha must stay high
+     enough to hide content behind it, since 0.94 was measured to still let
+     underlying card text read through the open listbox. */
+  --glass-floating: rgba(13, 17, 34, 0.99);
   --glass-sheen: linear-gradient(
     180deg,
     rgba(255, 255, 255, 0.07),
@@ -128,6 +134,11 @@
   --glass: rgba(255, 255, 255, 0.24);
   --glass-elevated: rgba(255, 255, 255, 0.32);
   --glass-strong: rgba(255, 255, 255, 0.48);
+  /* Same floating tier for light: the glass family here is white-translucent,
+     so an overlay needs a near-opaque near-white or dark text bleeds through.
+     The alpha must stay high enough to hide content behind it: 0.95 was
+     measured to still let underlying card text read through the listbox. */
+  --glass-floating: rgba(247, 249, 255, 0.99);
   --glass-sheen: linear-gradient(
     180deg,
     rgba(255, 255, 255, 0.25),
@@ -308,6 +319,20 @@ a {
   border-radius: var(--radius-sm);
 }
 
+/* Utility: visually hidden but kept in the accessibility tree — used for
+   programmatic labels whose visible rendering is intentionally omitted. */
+.sr-only {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 ::selection {
   background: var(--accent-bg);
 }
@@ -353,6 +378,17 @@ a {
 .page-subtitle {
   color: var(--text-secondary);
   font-size: 16px;
+}
+
+/* Resume Enhancer intake: half the default header-to-title gap (space-2 vs
+   page space-6) and consistent subtitle-to-cards spacing, scoped to this
+   page. */
+.page.resume-enhancer-intake {
+  padding-top: var(--space-2);
+}
+
+.page.resume-enhancer-intake .page-subtitle {
+  margin-bottom: var(--space-4);
 }
 
 .back-link {
@@ -569,6 +605,14 @@ textarea.input {
   min-height: 5.5rem;
 }
 
+/* Bounded JD textarea on the Resume Enhancer intake (scoped: shared inputs
+   keep their default height elsewhere). Compact desktop height that stays
+   within a readable max so it doesn't dominate the page. */
+.page.resume-enhancer-intake textarea {
+  height: 170px;
+  max-height: 260px;
+}
+
 select.input {
   appearance: none;
   background-image:
@@ -644,7 +688,10 @@ input[type='file'].input {
   margin-bottom: 0;
 }
 
-/* LEVEL 1 — glass base: neutral translucent surface. */
+/* LEVEL 1 — glass base: neutral translucent surface.
+   `backdrop-filter` makes this card a containing block for `position: fixed`
+   descendants (they size/position against the card, not the viewport), so card
+   overlays must stay `absolute`. */
 .form-section {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -1513,8 +1560,54 @@ input[type='file'].input {
   align-items: start;
 }
 
+/* Cards stretch to equal height on the Resume Enhancer intake only;
+   ApplicationForm/PersonForm keep the global start alignment. */
+.page.resume-enhancer-intake .form-grid {
+  align-items: stretch;
+}
+
+/* Resume Enhancer intake columns: Resume then AI Configuration stack in the
+   left column, and the Job Description card fills the right column for the
+   full row height. */
+.intake-jd {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+}
+
+.intake-jd > .field {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+}
+
+/* The JD textarea absorbs the remaining column height (overrides the bounded
+   intake textarea height). */
+.page.resume-enhancer-intake .intake-jd textarea {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 170px;
+  max-height: none;
+}
+
 .form-grid .form-actions {
   grid-column: 1 / -1;
+}
+
+/* Resume Enhancer intake cards: one shared padding for all three cards so
+   every `.section-title` row sits at the same offset from its card edges
+   (12px above, 16px left/right/bottom). */
+.page.resume-enhancer-intake .form-section {
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+/* Resume Enhancer intake actions: the card rhythm already separates the
+   workspace from its action, so no hairline divider — deliberate 24px
+   separation instead. Right alignment is inherited from `.form-actions`. */
+.page.resume-enhancer-intake .form-actions {
+  border-top: none;
+  padding-top: 0;
+  margin-top: var(--space-5);
 }
 
 @media (max-width: 900px) {
@@ -1614,6 +1707,35 @@ input[type='file'].input {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
+/* Selected file: reuses the empty state's Control surface (same dashed
+   border, radius, background and padding) so the filled picker reads as the
+   same container instead of a collapsed row. The surface itself is not
+   clickable — only Change is — so the hover accent is neutralized while
+   drag-over keeps its own state. Stays a single row (no wrap): a long
+   filename truncates instead of pushing the actions onto a second line. */
+.dropzone--selected {
+  cursor: default;
+}
+
+.dropzone--selected .dropzone-selected-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.dropzone--selected .document-actions {
+  margin-left: auto;
+}
+
+.dropzone--selected:not(.dropzone--over):hover {
+  border-color: var(--border-highlight);
+  background: var(--surface);
+}
+
 .dropzone:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
@@ -1642,6 +1764,46 @@ input[type='file'].input {
   display: block;
   color: var(--text-primary);
   font-size: 15px;
+}
+
+/* Resume Enhancer intake dropzone: compact content-driven height via
+   padding (instruction + formats left, Choose File pinned extreme right).
+   Button pinned to the extreme right of the dropzone. */
+.page.resume-enhancer-intake .dropzone > .button {
+  margin-left: auto;
+}
+
+.page.resume-enhancer-intake .dropzone-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .page.resume-enhancer-intake .dropzone {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+
+  .page.resume-enhancer-intake .dropzone > .button {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+/* Selected state stacks cleanly on narrow widths only: the actions wrap below
+   the filename, take the full width and align left. The empty-state rules
+   above are untouched. */
+@media (max-width: 640px) {
+  .dropzone--selected {
+    flex-wrap: wrap;
+  }
+
+  .dropzone--selected .document-actions {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 
 .dropzone-file {
@@ -1785,6 +1947,136 @@ input[type='file'].input {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.5),
     0 18px 40px -28px rgba(30, 41, 82, 0.18);
+}
+
+/* ---------- Resume Enhancer intake: AI configuration ---------- */
+
+/* Compact AI Configuration card: the intake's left column already bounds the
+   width, so the card fills it (padding is shared by the intake's
+   `.form-section` rule). It is also raised above later sibling cards:
+   `.form-section` uses `backdrop-filter`, so each card is its own stacking
+   context and the model listbox (z-index inside this card) would otherwise be
+   painted over by the Job Description card once the intake stacks into one
+   column. */
+.page.resume-enhancer-intake .ai-config {
+  position: relative;
+  z-index: 2;
+}
+
+/* Provider then model, each full width. The field margin is dropped here
+   because the container gap owns the rhythm. The former provider status row is
+   gone (status now lives in each option label), so the two fields are adjacent
+   and the single gap below is the whole vertical rhythm; the model listbox is
+   absolutely positioned beneath its field and does not affect it. */
+.ai-config-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.ai-config-controls > .field {
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+/* ---------- Searchable model combobox ---------- */
+
+.combobox {
+  position: relative;
+  min-width: 0;
+}
+
+.combobox .input {
+  width: 100%;
+  padding-right: 34px;
+}
+
+.combobox-clear {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.combobox-clear:hover {
+  color: var(--text-primary);
+}
+
+/* The listbox is anchored to `.combobox` (position: relative), so it always
+   travels with the search input: no viewport coordinates are involved. Only the
+   placement (below/above) and max-height are decided in JS; the height cap makes
+   the options scroll independently inside the available space.
+   Its surface must be opaque because it floats over card content: the previous
+   `var(--surface)` value is a 5% overlay token meant to sit *on top of* an
+   existing glass surface, not to be a floating surface itself. The
+   `--glass-floating` token already obscures what is behind it, so the blur below
+   is only an enhancement; the sheen keeps the glass character. */
+.combobox [role="listbox"] {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 8px;
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+  background:
+    var(--glass-sheen),
+    var(--glass-floating);
+  -webkit-backdrop-filter: var(--blur-md) saturate(1.2);
+  backdrop-filter: var(--blur-md) saturate(1.2);
+  box-shadow: var(--shadow-lg);
+  overflow-y: auto;
+  min-width: 0;
+  z-index: 20;
+}
+
+/* Flipped placement: not enough room below, so open upwards from the input. */
+.combobox [role="listbox"][data-placement='above'] {
+  top: auto;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+[role="listbox"][hidden] {
+  display: none;
+}
+
+.combobox [role="option"] {
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Selection/hover must stay legible against the near-opaque floating surface,
+   so the accent tint is layered over `--surface-elevated` for extra separation. */
+.combobox [role="option"][data-selected="true"],
+.combobox [role="option"]:hover,
+.combobox [role="option"][data-highlighted="true"] {
+  background:
+    linear-gradient(180deg, var(--accent-bg), var(--accent-bg)),
+    var(--surface-elevated);
+}
+
+.combobox [role="option"][aria-disabled="true"] {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  background: none;
 }
 
 /* ---------- motion safety ---------- */

@@ -1,16 +1,18 @@
-import type { ReactNode } from 'react'
-import type { AiOperationStatus } from '../../../shared/domain/ai-operation.js'
+import type { CSSProperties, ReactNode } from 'react'
 import {
-  isFitMatch,
-  type AnalysisResult,
-  type FitMatch,
-} from '../../../shared/domain/ai-analysis.js'
-import { StatusBadge } from '../../components/common/StatusBadge.js'
+  isAiOperationActiveState,
+  type AiOperationStatus,
+} from '../../../shared/domain/ai-operation.js'
+import { isAnalysisResult } from '../../../shared/domain/ai-analysis.js'
 import { StatusBanner } from '../../components/common/StatusBanner.js'
+import { AnalysisResultsView } from './AnalysisResultsView.js'
+import { PREPARING_LABEL, stepLabel } from './enhancementProgress.js'
+type StepStyle = CSSProperties & { [key: `--${string}`]: string | number }
+
 
 /**
- * Backend-driven AI progress and analysis-result display
- * (AI_EXECUTION_AND_PROGRESS.md §5, §12; RESUME_ENHANCER.md §6).
+ * Backend-driven AI progress display (AI_EXECUTION_AND_PROGRESS.md §5, §13;
+ * RESUME_ENHANCER.md §6).
  *
  * Named steps are the source of truth: pending, active (animated), completed
  * (persistent check mark). No fabricated percentages. Motion respects
@@ -19,130 +21,60 @@ import { StatusBanner } from '../../components/common/StatusBanner.js'
  * backend only sends safe messages.
  *
  * The completed state renders the canonical AnalysisResult produced by the
- * backend (M9-D): ATS Score with the AI-estimated disclaimer, Fit Match,
- * What's Good, and What's Missing.
+ * backend (M9-D) through the structured results view. The page composes that view
+ * with its actions; this default rendering stays action-free.
+ *
+ * Before an operation id exists the component shows one active "preparing" row
+ * (never an invented stage list), which is the documented pre-operation window.
+ * The single polite live region belongs to the dialog status line, so the step
+ * list itself is not a live region.
  */
 
-const STEP_LABELS: Record<string, string> = {
-  read_resume: 'Reading your resume',
-  understand_jd: 'Understanding the job description',
-  analyze_match: 'Analyzing your match',
-  identify_opportunities: 'Identifying improvement opportunities',
-  prepare_options: 'Preparing your enhancement options',
-  prepare_selected_changes: 'Preparing your selected changes',
-  enhance_resume: 'Enhancing your resume',
-  review_updated_resume: 'Reviewing the updated resume',
-  recalculate_match: 'Recalculating your match',
-  prepare_final_resume: 'Preparing your final resume',
-  review_resume: 'Reviewing your resume',
-  understand_role: 'Understanding the role',
-  write_cover_letter: 'Writing your tailored cover letter',
-  review_result: 'Reviewing the result',
-  prepare_cover_letter: 'Preparing your cover letter',
-}
-
-function stepLabel(stepId: string): string {
-  return STEP_LABELS[stepId] ?? stepId
-}
-
-const FIT_MATCH_LABELS: Record<FitMatch, string> = {
-  strong: 'Strong',
-  medium: 'Medium',
-  weak: 'Weak',
-}
-
-function fitMatchTone(fitMatch: FitMatch): 'success' | 'warning' | 'danger' {
-  if (fitMatch === 'strong') {
-    return 'success'
-  }
-  return fitMatch === 'medium' ? 'warning' : 'danger'
-}
-
-function toAnalysisResult(result: unknown): AnalysisResult | null {
-  if (typeof result !== 'object' || result === null) {
+/**
+ * Default completed-state renderer. Only Analyze Resume owns the canonical
+ * AnalysisResult view; every other operation is rendered by its own phase UI or
+ * an explicit `renderResult`. This prevents a completed ReanalysisResult
+ * ({ atsScore, fitMatch }) from being mistaken for an AnalysisResult during the
+ * phase transition. No handler is supplied here, so the view renders without the
+ * page-owned actions.
+ */
+function defaultCompletedContent(operation: AiOperationStatus): ReactNode {
+  if (operation.operation !== 'analyze_resume') {
     return null
   }
-  const candidate = result as { fitMatch?: unknown }
-  return isFitMatch(candidate.fitMatch) ? (result as AnalysisResult) : null
-}
-
-export function AnalysisResultView({ result }: { result: AnalysisResult }) {
-  return (
-    <section className="analysis-result" aria-label="Analysis result">
-      <div className="analysis-result__score-row">
-        <div
-          className="analysis-result__score"
-          role="img"
-          aria-label={`AI-estimated ATS score ${result.atsScore} out of 100`}
-        >
-          <span className="analysis-result__score-value">{result.atsScore}</span>
-          <span className="analysis-result__score-max">/ 100</span>
-        </div>
-        <div>
-          <h2 className="analysis-result__heading">AI-estimated ATS Score</h2>
-          <p className="analysis-result__disclaimer">
-            <strong>AI-estimated ATS Score — this is not the employer&apos;s actual ATS score.</strong>{' '}
-            It is an AI-estimated measure of how compatible your resume is with this job
-            description. It does not predict hiring outcomes.
-          </p>
-        </div>
-      </div>
-
-      <dl className="detail-list">
-        <div>
-          <dt>Fit Match</dt>
-          <dd>
-            <StatusBadge tone={fitMatchTone(result.fitMatch)}>
-              {FIT_MATCH_LABELS[result.fitMatch]}
-            </StatusBadge>
-          </dd>
-        </div>
-      </dl>
-
-      <section aria-label="What's Good">
-        <h2>What&apos;s Good</h2>
-        {result.strengths.length === 0 ? (
-          <p className="muted">No notable alignment was identified for this job description.</p>
-        ) : (
-          <ul className="analysis-result__list">
-            {result.strengths.map((strength) => (
-              <li key={strength.id}>
-                <strong>{strength.title}</strong>
-                <p>{strength.description}</p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section aria-label="What's Missing">
-        <h2>What&apos;s Missing</h2>
-        {result.gaps.length === 0 ? (
-          <p className="analysis-result__no-gaps">
-            <strong>Your resume is already a strong match for this job description.</strong>
-          </p>
-        ) : (
-          <ul className="analysis-result__list">
-            {result.gaps.map((gap) => (
-              <li key={gap.id}>
-                <strong>{gap.title}</strong>
-                <p>{gap.description}</p>
-                <p className="muted">Job description: {gap.jdEvidence}</p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </section>
+  return isAnalysisResult(operation.result) ? (
+    <AnalysisResultsView result={operation.result} />
+  ) : (
+    <StatusBanner tone="error">
+      The AI analysis result could not be used. Please try again.
+    </StatusBanner>
   )
 }
 
 interface AiOperationProgressProps {
-  operation: AiOperationStatus
+  /** The observed operation, or null before an operation id exists. */
+  operation: AiOperationStatus | null
   onRetry: () => void
   /**
-   * Optional renderer for the completed result. When omitted, the default
-   * analysis-result view is used, preserving the M9-D behavior.
+   * Optional Stop/Cancel action. Rendered only while the operation (or the
+   * pre-operation window) is active, so the user can cancel a real backend
+   * operation in every stage (ADR-010).
+   */
+  onStop?: () => void
+  /** Label for the Stop/Cancel action; the dialog supplies the stage copy. */
+  stopLabel?: string
+  /**
+   * True while the stop request is in flight. The action stays visible (it must
+   * never vanish mid-processing) but is disabled and reads "Stopping…".
+   */
+  stopDisabled?: boolean
+  /** True while a start request is in flight and no operation id exists yet. */
+  starting?: boolean
+  /** Copy for the single pre-operation row. */
+  preparingLabel?: string
+  /**
+   * Optional renderer for the completed result. When omitted, the structured
+   * analysis results view is used, preserving the M9-D behavior.
    */
   renderResult?: (operation: AiOperationStatus) => ReactNode
 }
@@ -150,28 +82,57 @@ interface AiOperationProgressProps {
 export function AiOperationProgress({
   operation,
   onRetry,
+  onStop,
+  stopLabel = 'Stop',
+  stopDisabled = false,
+  starting = false,
+  preparingLabel = PREPARING_LABEL,
   renderResult,
 }: AiOperationProgressProps) {
+  if (!operation) {
+    // Pre-operation window: one active row for the start preparation, never a
+    // synthesized stage list. Stop stays reachable here too.
+    return (
+      <section className="ai-progress" aria-label="AI processing">
+        {starting ? (
+          <ol className="ai-progress__steps">
+            <li className="ai-progress__step ai-progress__step--active" aria-current="step">
+              <span className="ai-progress__indicator" aria-hidden="true" />
+              <span className="ai-progress__label">{preparingLabel}</span>
+              <span className="visually-hidden">active</span>
+            </li>
+          </ol>
+        ) : null}
+        {starting && onStop ? (
+          <div className="ai-progress__actions">
+            <button
+              className="button button--ghost button--danger"
+              type="button"
+              disabled={stopDisabled}
+              onClick={onStop}
+            >
+              {stopDisabled ? 'Stopping…' : stopLabel}
+            </button>
+          </div>
+        ) : null}
+      </section>
+    )
+  }
+
   const failed = operation.state === 'failed' || operation.state === 'timed_out'
+  const cancelled = operation.state === 'cancelled'
+  const active = isAiOperationActiveState(operation.state)
   const completedContent =
     operation.state === 'completed'
       ? renderResult
         ? renderResult(operation)
-        : (() => {
-            const analysisResult = toAnalysisResult(operation.result)
-            return analysisResult ? (
-              <AnalysisResultView result={analysisResult} />
-            ) : (
-              <StatusBanner tone="error">
-                The AI analysis result could not be used. Please try again.
-              </StatusBanner>
-            )
-          })()
+        : defaultCompletedContent(operation)
       : null
 
   return (
-    <section className="ai-progress" aria-label="AI processing" aria-live="polite">
+    <section className="ai-progress" aria-label="AI processing">
       {completedContent}
+      {cancelled ? <StatusBanner tone="notice">Analysis stopped.</StatusBanner> : null}
       {failed ? (
         <div className="ai-progress__failure" role="alert">
           <p className="ai-progress__failure-title">We couldn&apos;t complete the enhancement.</p>
@@ -183,23 +144,38 @@ export function AiOperationProgress({
           </button>
         </div>
       ) : null}
-      {!failed && operation.state !== 'completed' ? (
-        <ol className="ai-progress__steps">
-          {operation.steps.map((step) => (
-            <li
-              key={step.id}
-              className={`ai-progress__step ai-progress__step--${step.state}`}
-              aria-current={step.state === 'active' ? 'step' : undefined}
+      <>
+        {!failed && !cancelled && operation.state !== 'completed' ? (
+          <ol className="ai-progress__steps">
+            {operation.steps.map((step, index) => (
+              <li
+                key={step.id}
+                className={`ai-progress__step ai-progress__step--${step.state}`}
+                aria-current={step.state === 'active' ? 'step' : undefined}
+                style={{ '--ai-complete-index': index } as StepStyle}
+              >
+                <span className="ai-progress__indicator" aria-hidden="true" />
+                <span className="ai-progress__label">{stepLabel(step.id)}</span>
+                <span className="visually-hidden">
+                  {step.state === 'completed' ? 'completed' : step.state}
+                </span>
+              </li>
+            ))}
+          </ol>
+        ) : null}
+        {active && onStop ? (
+          <div className="ai-progress__actions">
+            <button
+              className="button button--ghost button--danger"
+              type="button"
+              disabled={stopDisabled}
+              onClick={onStop}
             >
-              <span className="ai-progress__indicator" aria-hidden="true" />
-              <span className="ai-progress__label">{stepLabel(step.id)}</span>
-              <span className="visually-hidden">
-                {step.state === 'completed' ? 'completed' : step.state}
-              </span>
-            </li>
-          ))}
-        </ol>
-      ) : null}
+              {stopDisabled ? 'Stopping…' : stopLabel}
+            </button>
+          </div>
+        ) : null}
+      </>
     </section>
   )
 }

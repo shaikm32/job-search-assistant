@@ -4,7 +4,9 @@ import {
   type AiOperationStatus,
 } from '../../../shared/domain/ai-operation.js'
 import {
+  isAnalysisResult,
   isFitMatch,
+  shouldBlockEnhancement,
   type AnalysisResult,
 } from '../../../shared/domain/ai-analysis.js'
 import type {
@@ -27,7 +29,13 @@ import {
   startEnhancementSuggestions,
   startResumeEnhancement,
 } from './resumeEnhancerApi.js'
+import { findExplicitProviderOption, resolveExplicitModelId } from './aiSelection.js'
+import { MISMATCH_BLOCKED_MESSAGE } from './analysisResults.js'
 import { useAiOperation } from './useAiOperation.js'
+import {
+  retryDispatchForPhase,
+  shouldApplyWorkflowUpdate,
+} from './enhancementProgress.js'
 import {
   useAiOperationOptions,
   type OperationOptionsStatus,
@@ -55,6 +63,13 @@ export type EnhancementPhase =
   | 'final'
   | 'cover-letter'
 
+/**
+ * Stale-result guard shared with the workflow effect bookkeeping: re-exported
+ * here because the hook is the only producer of workflow epochs
+ * (implementation lives in the pure `enhancementProgress` module).
+ */
+export { shouldApplyWorkflowUpdate } from './enhancementProgress.js'
+
 const PHASE_OPERATION: Record<EnhancementPhase, AiOperation> = {
   analyze: 'analyze_resume',
   suggestions: 'generate_suggestions',
@@ -63,44 +78,6 @@ const PHASE_OPERATION: Record<EnhancementPhase, AiOperation> = {
   reanalyze: 'reanalyze_resume',
   final: 'generate_cover_letter',
   'cover-letter': 'generate_cover_letter',
-}
-
-function findProviderOption(
-  options: AiOperationOptions | null,
-  providerId: AiProviderId | null,
-): AiOperationOptions['providers'][number] | null {
-  if (!options || options.providers.length === 0) {
-    return null
-  }
-  if (providerId) {
-    const selected = options.providers.find((entry) => entry.id === providerId)
-    if (selected) {
-      return selected
-    }
-  }
-  return options.providers[0] ?? null
-}
-
-function resolveModelId(
-  provider: AiOperationOptions['providers'][number] | null,
-  modelId: string | null,
-): string | null {
-  if (!provider || provider.models.length === 0) {
-    return null
-  }
-  if (modelId && provider.models.some((entry) => entry.modelId === modelId)) {
-    return modelId
-  }
-  return provider.defaultModelId ?? provider.models[0]?.modelId ?? null
-}
-
-function toAnalysisResult(result: unknown): AnalysisResult | null {
-  if (typeof result !== 'object' || result === null) {
-    return null
-  }
-  return isFitMatch((result as { fitMatch?: unknown }).fitMatch)
-    ? (result as AnalysisResult)
-    : null
 }
 
 function toSuggestions(result: unknown): EnhancementSuggestion[] | null {
@@ -119,8 +96,10 @@ function toEnhancementResult(result: unknown): EnhancementResult | null {
   if (
     typeof candidate.resume !== 'object' ||
     candidate.resume === null ||
+    !Array.isArray((candidate.resume as { sections?: unknown }).sections) ||
     typeof candidate.changeSummary !== 'object' ||
-    candidate.changeSummary === null
+    candidate.changeSummary === null ||
+    !Array.isArray((candidate.changeSummary as { changes?: unknown }).changes)
   ) {
     return null
   }
@@ -153,11 +132,37 @@ function toErrorMessage(error: unknown): string {
 
 const GENERIC_RESULT_ERROR = 'The AI result could not be used. Please try again.'
 
+export interface EnhancementWorkflowOptions {
+  /**
+   * Provider explicitly chosen at intake. Carried through unchanged: never
+   * substituted with another provider (RESUME_ENHANCER.md §4).
+   */
+  providerId: AiProviderId | null
+  /**
+   * Model explicitly chosen at intake. Carried through unchanged: there is no
+   * default/first-model fallback, so a missing model is a safe start error.
+   */
+  modelId: string | null
+  /**
+   * Start analysis once, as soon as the session and the resolved options are
+   * ready. Set by the single-screen intake after a confirmed submit.
+   */
+  autoStartAnalysis?: boolean
+  /**
+   * Called exactly once when the authoritative `enhance_resume` operation
+   * transitions to `completed`. Used by the page to refresh the backend-backed
+   * session status without a loading flash.
+   */
+  onEnhancementCompleted?: () => void | Promise<void>
+}
+
 export interface EnhancementWorkflow {
   phase: EnhancementPhase
   /** The AI operation associated with the current phase. */
   currentOperation: AiOperation
   operation: AiOperationStatus | null
+  /** The operation currently being observed, or null before a start. */
+  operationId: string | null
   pollStatus: ReturnType<typeof useAiOperation>['pollStatus']
   pollError: string | null
   processing: boolean
@@ -173,13 +178,9 @@ export interface EnhancementWorkflow {
   options: AiOperationOptions | null
   optionsError: string | null
   reloadOptions: () => Promise<void>
-  providerId: AiProviderId | null
-  modelId: string | null
   providerOption: AiOperationOptions['providers'][number] | null
   resolvedProviderId: AiProviderId | null
   resolvedModelId: string | null
-  selectProvider: (providerId: AiProviderId) => void
-  selectModel: (modelId: string) => void
 
   starting: boolean
   startError: string | null
@@ -188,9 +189,14 @@ export interface EnhancementWorkflow {
   startEnhancement: () => Promise<void>
   startCoverLetter: () => Promise<void>
   retry: () => void
+  /** Drops every workflow result and returns to the initial analyze phase. */
+  reset: () => void
 }
 
-export function useEnhancementWorkflow(sessionId: string | undefined): EnhancementWorkflow {
+export function useEnhancementWorkflow(
+  sessionId: string | undefined,
+  workflowOptions: EnhancementWorkflowOptions,
+): EnhancementWorkflow {
   const [phase, setPhase] = useState<EnhancementPhase>('analyze')
   const [operationId, setOperationId] = useState<string | null>(null)
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null)
@@ -205,9 +211,6 @@ export function useEnhancementWorkflow(sessionId: string | undefined): Enhanceme
   // even when no operation was ever started (operationId is still null).
   const [startNonce, setStartNonce] = useState(0)
 
-  const [providerId, setProviderId] = useState<AiProviderId | null>(null)
-  const [modelId, setModelId] = useState<string | null>(null)
-
   const currentOperation = PHASE_OPERATION[phase]
   const {
     status: optionsStatus,
@@ -217,27 +220,25 @@ export function useEnhancementWorkflow(sessionId: string | undefined): Enhanceme
   } = useAiOperationOptions(currentOperation)
   const { operation, pollStatus, pollError } = useAiOperation(sessionId, operationId)
 
-  const providerOption = findProviderOption(options, providerId)
+  const providerOption = findExplicitProviderOption(options, workflowOptions.providerId)
   const resolvedProviderId = providerOption?.id ?? null
-  const resolvedModelId = resolveModelId(providerOption, modelId)
+  const resolvedModelId = resolveExplicitModelId(providerOption, workflowOptions.modelId)
 
   const processing = operation !== null && isAiOperationActiveState(operation.state)
   const handledOperationRef = useRef<string | null>(null)
+  // Guards stale async dispatches: every start captures the current epoch and
+  // drops its state updates once the workflow was reset (ADR-010).
+  const epochRef = useRef(0)
+  // Session-scoped guard so analysis auto-starts exactly once per session and a
+  // React StrictMode double-effect cannot start it twice.
+  const autoStartedForRef = useRef<string | null>(null)
+  // A ref keeps callback identity from re-running the terminal-operation effect.
+  const onEnhancementCompletedRef = useRef(workflowOptions?.onEnhancementCompleted)
+  useEffect(() => {
+    onEnhancementCompletedRef.current = workflowOptions?.onEnhancementCompleted
+  }, [workflowOptions?.onEnhancementCompleted])
 
   const optionsMatchPhase = options !== null && options.operation === currentOperation
-
-  const selectProvider = useCallback((nextProviderId: AiProviderId) => {
-    // Changing the provider resets the model to that provider's default; the
-    // available model list follows the selected provider (ADR-006).
-    setProviderId(nextProviderId)
-    setModelId(null)
-    setStartError(null)
-  }, [])
-
-  const selectModel = useCallback((nextModelId: string) => {
-    setModelId(nextModelId)
-    setStartError(null)
-  }, [])
 
   const toggleSuggestion = useCallback((id: string) => {
     setSelectedIds((current) => {
@@ -267,14 +268,18 @@ export function useEnhancementWorkflow(sessionId: string | undefined): Enhanceme
     }
     switch (operation.operation) {
       case 'analyze_resume': {
-        const result = toAnalysisResult(operation.result)
+        const result = isAnalysisResult(operation.result) ? operation.result : null
         if (!result) {
           setStartError(GENERIC_RESULT_ERROR)
           setOperationId(null)
           return
         }
         setAnalysisResult(result)
-        setPhase('suggestions')
+        // A blocking role mismatch never enters the suggestions phase, so the
+        // Generate Suggestions operation is not requested at all
+        // (PD-M9-037, AC6). The existing phase machine is unchanged: the
+        // results page is the `selection` phase without suggestions.
+        setPhase(shouldBlockEnhancement(result) ? 'selection' : 'suggestions')
         setOperationId(null)
         return
       }
@@ -299,6 +304,9 @@ export function useEnhancementWorkflow(sessionId: string | undefined): Enhanceme
           return
         }
         setEnhancementResult(result)
+        // The authoritative completion signal: the operation itself completed,
+        // not merely the presence of a result object.
+        void onEnhancementCompletedRef.current?.()
         setPhase('reanalyze')
         setOperationId(null)
         return
@@ -332,6 +340,70 @@ export function useEnhancementWorkflow(sessionId: string | undefined): Enhanceme
     }
   }, [operation])
 
+  // Starting state for the inline panel: analysis was requested but no operation
+  // exists yet and no error has been reported.
+  //
+  // Analysis auto-starts once per session when the page requests it (the user
+  // already confirmed consent before the session was prepared). A failed start
+  // is surfaced through `startError` and retried explicitly, never retried
+  // automatically (a 409 means an operation already exists).
+  useEffect(() => {
+    if (workflowOptions.autoStartAnalysis !== true || !sessionId) {
+      return
+    }
+    if (autoStartedForRef.current === sessionId) {
+      return
+    }
+    if (phase !== 'analyze' || operationId || starting) {
+      return
+    }
+    if (
+      optionsStatus !== 'ready' ||
+      !optionsMatchPhase ||
+      !resolvedProviderId ||
+      !resolvedModelId
+    ) {
+      return
+    }
+    autoStartedForRef.current = sessionId
+    const epoch = epochRef.current
+    setStarting(true)
+    setStartError(null)
+    void (async () => {
+      try {
+        const started = await startEnhancementAnalysis(
+          sessionId,
+          resolvedProviderId,
+          resolvedModelId,
+        )
+        if (!shouldApplyWorkflowUpdate(epoch, epochRef.current)) {
+          return
+        }
+        handledOperationRef.current = null
+        setOperationId(started.operationId)
+      } catch (error) {
+        if (!shouldApplyWorkflowUpdate(epoch, epochRef.current)) {
+          return
+        }
+        setStartError(toErrorMessage(error))
+      } finally {
+        if (shouldApplyWorkflowUpdate(epoch, epochRef.current)) {
+          setStarting(false)
+        }
+      }
+    })()
+  }, [
+    workflowOptions.autoStartAnalysis,
+    sessionId,
+    phase,
+    operationId,
+    starting,
+    optionsStatus,
+    optionsMatchPhase,
+    resolvedProviderId,
+    resolvedModelId,
+  ])
+
   // Generate Suggestions runs automatically once analysis is complete.
   useEffect(() => {
     if (phase !== 'suggestions' || operationId || !analysisResult || !sessionId) {
@@ -346,6 +418,7 @@ export function useEnhancementWorkflow(sessionId: string | undefined): Enhanceme
       return
     }
     let cancelled = false
+    const epoch = epochRef.current
     setStarting(true)
     setStartError(null)
     void (async () => {
@@ -356,16 +429,16 @@ export function useEnhancementWorkflow(sessionId: string | undefined): Enhanceme
           resolvedModelId,
           analysisResult,
         )
-        if (!cancelled) {
+        if (!cancelled && shouldApplyWorkflowUpdate(epoch, epochRef.current)) {
           handledOperationRef.current = null
           setOperationId(started.operationId)
         }
       } catch (error) {
-        if (!cancelled) {
+        if (!cancelled && shouldApplyWorkflowUpdate(epoch, epochRef.current)) {
           setStartError(toErrorMessage(error))
         }
       } finally {
-        if (!cancelled) {
+        if (!cancelled && shouldApplyWorkflowUpdate(epoch, epochRef.current)) {
           setStarting(false)
         }
       }
@@ -400,6 +473,7 @@ export function useEnhancementWorkflow(sessionId: string | undefined): Enhanceme
     }
     const resume: Resume = enhancementResult.resume
     let cancelled = false
+    const epoch = epochRef.current
     setStarting(true)
     setStartError(null)
     void (async () => {
@@ -410,16 +484,16 @@ export function useEnhancementWorkflow(sessionId: string | undefined): Enhanceme
           resolvedModelId,
           resume,
         )
-        if (!cancelled) {
+        if (!cancelled && shouldApplyWorkflowUpdate(epoch, epochRef.current)) {
           handledOperationRef.current = null
           setOperationId(started.operationId)
         }
       } catch (error) {
-        if (!cancelled) {
+        if (!cancelled && shouldApplyWorkflowUpdate(epoch, epochRef.current)) {
           setStartError(toErrorMessage(error))
         }
       } finally {
-        if (!cancelled) {
+        if (!cancelled && shouldApplyWorkflowUpdate(epoch, epochRef.current)) {
           setStarting(false)
         }
       }
@@ -454,18 +528,28 @@ export function useEnhancementWorkflow(sessionId: string | undefined): Enhanceme
     }
     handledOperationRef.current = null
     setStartError(null)
+    setOperationId(null)
     setStarting(true)
+    const epoch = epochRef.current
     try {
       const started = await startEnhancementAnalysis(
         sessionId,
         resolvedProviderId,
         resolvedModelId,
       )
+      if (!shouldApplyWorkflowUpdate(epoch, epochRef.current)) {
+        return
+      }
       setOperationId(started.operationId)
     } catch (error) {
+      if (!shouldApplyWorkflowUpdate(epoch, epochRef.current)) {
+        return
+      }
       setStartError(toErrorMessage(error))
     } finally {
-      setStarting(false)
+      if (shouldApplyWorkflowUpdate(epoch, epochRef.current)) {
+        setStarting(false)
+      }
     }
   }, [
     sessionId,
@@ -478,6 +562,12 @@ export function useEnhancementWorkflow(sessionId: string | undefined): Enhanceme
 
   const startEnhancement = useCallback(async () => {
     if (!sessionId || !suggestions) {
+      return
+    }
+    // Defensive guard, shared with the backend (ADR-012): a blocking mismatch
+    // must never start an enhancement, even if an action somehow reaches here.
+    if (analysisResult && shouldBlockEnhancement(analysisResult)) {
+      setStartError(MISMATCH_BLOCKED_MESSAGE)
       return
     }
     if (
@@ -496,25 +586,41 @@ export function useEnhancementWorkflow(sessionId: string | undefined): Enhanceme
     }
     handledOperationRef.current = null
     setStartError(null)
+    setOperationId(null)
+    // A new enhancement invalidates every result derived from the old one.
+    setEnhancementResult(null)
+    setReanalysisResult(null)
+    setCoverLetter(null)
     setStarting(true)
+    const epoch = epochRef.current
     try {
       const started = await startResumeEnhancement(
         sessionId,
         resolvedProviderId,
         resolvedModelId,
         selected,
+        analysisResult ?? undefined,
       )
+      if (!shouldApplyWorkflowUpdate(epoch, epochRef.current)) {
+        return
+      }
       setPhase('enhance')
       setOperationId(started.operationId)
     } catch (error) {
+      if (!shouldApplyWorkflowUpdate(epoch, epochRef.current)) {
+        return
+      }
       setStartError(toErrorMessage(error))
     } finally {
-      setStarting(false)
+      if (shouldApplyWorkflowUpdate(epoch, epochRef.current)) {
+        setStarting(false)
+      }
     }
   }, [
     sessionId,
     suggestions,
     selectedIds,
+    analysisResult,
     optionsStatus,
     optionsMatchPhase,
     optionsError,
@@ -537,7 +643,10 @@ export function useEnhancementWorkflow(sessionId: string | undefined): Enhanceme
     }
     handledOperationRef.current = null
     setStartError(null)
+    setOperationId(null)
+    setCoverLetter(null)
     setStarting(true)
+    const epoch = epochRef.current
     try {
       const started = await startEnhancementCoverLetter(
         sessionId,
@@ -545,12 +654,20 @@ export function useEnhancementWorkflow(sessionId: string | undefined): Enhanceme
         resolvedModelId,
         enhancementResult.resume,
       )
+      if (!shouldApplyWorkflowUpdate(epoch, epochRef.current)) {
+        return
+      }
       setPhase('cover-letter')
       setOperationId(started.operationId)
     } catch (error) {
+      if (!shouldApplyWorkflowUpdate(epoch, epochRef.current)) {
+        return
+      }
       setStartError(toErrorMessage(error))
     } finally {
-      setStarting(false)
+      if (shouldApplyWorkflowUpdate(epoch, epochRef.current)) {
+        setStarting(false)
+      }
     }
   }, [
     sessionId,
@@ -563,29 +680,58 @@ export function useEnhancementWorkflow(sessionId: string | undefined): Enhanceme
   ])
 
   const retry = useCallback(() => {
+    // A retry never re-processes the failed terminal operation: the failed id
+    // is cleared before dispatch so no stale error/loading/completion state
+    // survives. Re-analysis and cover-letter retries do not touch session
+    // status.
     setStartError(null)
-    if (phase === 'analyze') {
+    handledOperationRef.current = null
+    setOperationId(null)
+    const dispatch = retryDispatchForPhase(phase)
+    if (dispatch === 'analysis') {
       void startAnalysis()
-    } else if (phase === 'enhance') {
+    } else if (dispatch === 'enhancement') {
       void startEnhancement()
-    } else if (phase === 'cover-letter') {
+    } else if (dispatch === 'cover-letter') {
       void startCoverLetter()
     } else {
       // Automatic phases (suggestions/reanalyze): the start may have failed
       // before an operationId existed, so clearing the operation alone would
       // not re-run their start effect. Bump the retry nonce (which both
       // auto-start effects depend on) to force exactly one re-run.
-      handledOperationRef.current = null
-      setOperationId(null)
       setStartNonce((current) => current + 1)
     }
   }, [phase, startAnalysis, startEnhancement, startCoverLetter])
+
+  /**
+   * Clears the whole workflow, for example after a confirmed Stop or after the
+   * user is Done. Bumping the epoch drops every in-flight dispatch result, and
+   * clearing the observed operation id makes `useAiOperation` reset its own
+   * state. A new session then auto-starts analysis again.
+   */
+  const reset = useCallback(() => {
+    epochRef.current += 1
+    autoStartedForRef.current = null
+    handledOperationRef.current = null
+    setPhase('analyze')
+    setOperationId(null)
+    setAnalysisResult(null)
+    setSuggestions(null)
+    setSelectedIds(new Set())
+    setEnhancementResult(null)
+    setReanalysisResult(null)
+    setCoverLetter(null)
+    setStarting(false)
+    setStartError(null)
+    setStartNonce(0)
+  }, [])
 
   return useMemo(
     () => ({
       phase,
       currentOperation,
       operation,
+      operationId,
       pollStatus,
       pollError,
       processing,
@@ -599,13 +745,9 @@ export function useEnhancementWorkflow(sessionId: string | undefined): Enhanceme
       options,
       optionsError,
       reloadOptions,
-      providerId,
-      modelId,
       providerOption,
       resolvedProviderId,
       resolvedModelId,
-      selectProvider,
-      selectModel,
       starting,
       startError,
       toggleSuggestion,
@@ -613,11 +755,13 @@ export function useEnhancementWorkflow(sessionId: string | undefined): Enhanceme
       startEnhancement,
       startCoverLetter,
       retry,
+      reset,
     }),
     [
       phase,
       currentOperation,
       operation,
+      operationId,
       pollStatus,
       pollError,
       processing,
@@ -631,13 +775,9 @@ export function useEnhancementWorkflow(sessionId: string | undefined): Enhanceme
       options,
       optionsError,
       reloadOptions,
-      providerId,
-      modelId,
       providerOption,
       resolvedProviderId,
       resolvedModelId,
-      selectProvider,
-      selectModel,
       starting,
       startError,
       toggleSuggestion,
@@ -645,6 +785,7 @@ export function useEnhancementWorkflow(sessionId: string | undefined): Enhanceme
       startEnhancement,
       startCoverLetter,
       retry,
+      reset,
     ],
   )
 }

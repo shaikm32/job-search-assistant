@@ -1,31 +1,33 @@
 import type { EnhancementSuggestion } from '../../../shared/domain/ai-enhancement.js'
 
 /**
- * Suggestion selection screen (M9-F, RESUME_ENHANCER.md §7, PD-M9-004).
+ * Suggestion selection, rendered inside the analysis-results page
+ * (RESUME_ENHANCER.md §7, PD-M9-004/PD-M9-037).
  *
  * Each suggestion explains what will change, where, and why it is relevant.
- * No suggestion is preselected; at least one must be chosen to enhance.
+ * No suggestion is preselected; at least one must be chosen to enhance. The
+ * page owns the single primary "Enhance Resume" action, so this section renders
+ * no submit button of its own.
  */
 interface SuggestionSelectionProps {
   suggestions: EnhancementSuggestion[]
   selectedIds: ReadonlySet<string>
   onToggle: (id: string) => void
-  onEnhance: () => void
   disabled: boolean
-  starting: boolean
 }
 
 export function SuggestionSelection({
   suggestions,
   selectedIds,
   onToggle,
-  onEnhance,
   disabled,
-  starting,
 }: SuggestionSelectionProps) {
   return (
-    <section aria-label="Enhancement suggestions">
-      <h2>Enhancement Suggestions</h2>
+    <section
+      className="analysis-results__section"
+      aria-label="Enhancement suggestions"
+    >
+      <h3 className="analysis-results__section-title">Enhancement Suggestions</h3>
       {suggestions.length === 0 ? (
         <p className="muted">
           No enhancement suggestions were identified for this job description.
@@ -60,16 +62,6 @@ export function SuggestionSelection({
           })}
         </ul>
       )}
-      <p>
-        <button
-          className="button button--primary"
-          type="button"
-          disabled={disabled || starting || selectedIds.size === 0}
-          onClick={onEnhance}
-        >
-          {starting ? 'Starting…' : 'Enhance Resume'}
-        </button>
-      </p>
     </section>
   )
 }

@@ -12,6 +12,24 @@ interface RequestOptions {
   method?: string
   body?: unknown
   query?: Record<string, string | undefined>
+  /**
+   * Cancels the request. Used by the Resume Enhancer preparation window so a
+   * confirmed Stop aborts in-flight intake requests (ADR-010).
+   */
+  signal?: AbortSignal
+}
+
+/**
+ * True when a failure is an aborted request rather than a backend failure.
+ * Abort errors are control flow for a user-cancelled operation, so they are
+ * never translated into the "backend unavailable" message.
+ */
+export function isAbortError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { name?: unknown }).name === 'AbortError'
+  )
 }
 
 function buildUrl(path: string, query?: Record<string, string | undefined>): string {
@@ -47,8 +65,13 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       method: options.method ?? 'GET',
       headers: options.body === undefined ? undefined : { 'content-type': 'application/json' },
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: options.signal,
     })
-  } catch {
+  } catch (error) {
+    // A user-confirmed cancellation is not a backend failure.
+    if (options.signal?.aborted || isAbortError(error)) {
+      throw error
+    }
     throw new ApiError('The local backend is unavailable. Please start it and try again.', null)
   }
   if (response.status === 204) {

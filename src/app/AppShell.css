@@ -121,6 +121,12 @@
     var(--shadow-sm);
 }
 
+/* Navigation is locked while the Resume Enhancer analysis is running. */
+.nav-link--disabled {
+  pointer-events: none;
+  opacity: 0.5;
+}
+
 :root[data-theme='light'] .nav-link--active {
   background: linear-gradient(180deg, #ffffff, rgba(255, 255, 255, 0.75));
   border: 1px solid rgba(30, 41, 82, 0.08);

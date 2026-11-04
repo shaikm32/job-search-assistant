@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../../api/client.js'
+import { retryTransient } from '../../api/retry.js'
 import { getDashboardSummary, type DashboardSummary } from './dashboardApi.js'
 
 export type DashboardStatus = 'loading' | 'ready' | 'error'
@@ -13,7 +14,9 @@ export function useDashboard() {
     setStatus('loading')
     setError(null)
     try {
-      setSummary(await getDashboardSummary())
+      setSummary(
+        await retryTransient(getDashboardSummary, { maxAttempts: 5, baseDelayMs: 250 }),
+      )
       setStatus('ready')
     } catch (loadError) {
       setError(

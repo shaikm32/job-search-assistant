@@ -2,12 +2,15 @@ import type { AiModelDescriptor } from '../../../shared/domain/ai.js'
 
 /**
  * Provider-agnostic model search/filter (M9-G).
- *
+ * Provider-agnostic model search/filter (M9-G).
  * Case-insensitive partial matching against both the model display name and
- * the model identifier, so it works for every provider's catalog — including
- * large dynamically discovered lists such as OpenRouter (ADR-007). Filtering
- * never mutates or re-sorts the provider-declared order.
- */
+ * the model identifier, so it works for every provider's catalog
+ large dynamically discovered lists such as OpenRouter (ADR-007). Filtering
+ never mutates or re-sorts the provider-declared order.
+
+
+*/
+
 export function filterModelsByQuery(
   models: readonly AiModelDescriptor[],
   query: string,
@@ -23,20 +26,18 @@ export function filterModelsByQuery(
   )
 }
 
+/** Exact no-match copy shown by the model combobox. */
+export const NO_MODELS_FOUND_MESSAGE = 'No models found matching your search.'
+
+
 /**
- * Applies a search filter while preserving the selected model: the selected
- * option stays in the visible list even when it does not match the current
- * query, so searching can never silently change the user's selection.
+ * Resolves the no-results copy for a search: null while the query is empty or
+ * at least one model matched, otherwise the exact no-match message. Pure so the
+ * combobox does not own the wording and it stays testable.
  */
-export function resolveVisibleModels(
-  models: readonly AiModelDescriptor[],
-  query: string,
-  selectedModelId: string | null,
-): AiModelDescriptor[] {
-  const filtered = filterModelsByQuery(models, query)
-  if (!selectedModelId || filtered.some((model) => model.modelId === selectedModelId)) {
-    return filtered
+export function modelSearchNoResultsMessage(matchCount: number, query: string): string | null {
+  if (query.trim().length === 0 || matchCount > 0) {
+    return null
   }
-  const selected = models.find((model) => model.modelId === selectedModelId)
-  return selected ? [selected, ...filtered] : filtered
+  return NO_MODELS_FOUND_MESSAGE
 }

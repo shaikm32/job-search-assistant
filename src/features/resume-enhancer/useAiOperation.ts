@@ -70,7 +70,8 @@ export function useAiOperation(
         if (isAiOperationActiveState(status.state)) {
           pollTimerRef.current = setTimeout(() => void poll(), POLL_INTERVAL_MS)
         } else {
-          // Terminal state: the backend owns completion; stop polling.
+          // Terminal state (`completed`, `failed`, `timed_out`, or `cancelled`):
+          // the backend owns completion; stop polling.
           stop()
           setPollStatus('idle')
         }

@@ -70,8 +70,8 @@ export async function uploadResumeToBase64(file: File): Promise<ResumeUpload> {
   return { fileName: file.name, mimeType, contentBase64: await readFileAsBase64(file) }
 }
 
-export function createEnhancementSession(): Promise<EnhancementSession> {
-  return apiRequest<EnhancementSession>('/api/enhancements', { method: 'POST' })
+export function createEnhancementSession(signal?: AbortSignal): Promise<EnhancementSession> {
+  return apiRequest<EnhancementSession>('/api/enhancements', { method: 'POST', signal })
 }
 
 export function getEnhancementSession(id: string): Promise<EnhancementSession> {
@@ -81,20 +81,22 @@ export function getEnhancementSession(id: string): Promise<EnhancementSession> {
 export function uploadSessionResume(
   sessionId: string,
   upload: ResumeUpload,
+  signal?: AbortSignal,
 ): Promise<EnhancementArtifactSummary> {
   return apiRequest<EnhancementArtifactSummary>(
     `/api/enhancements/${encodeURIComponent(sessionId)}/resume`,
-    { method: 'POST', body: upload },
+    { method: 'POST', body: upload, signal },
   )
 }
 
 export function saveJobDescription(
   sessionId: string,
   jobDescription: string,
+  signal?: AbortSignal,
 ): Promise<EnhancementSession> {
   return apiRequest<EnhancementSession>(
     `/api/enhancements/${encodeURIComponent(sessionId)}/job-description`,
-    { method: 'PUT', body: { jobDescription } },
+    { method: 'PUT', body: { jobDescription }, signal },
   )
 }
 
@@ -155,16 +157,27 @@ export function startEnhancementSuggestions(
 /**
  * M9-F: starts Enhance Resume with the user-selected suggestions. At least one
  * suggestion is required; the backend re-validates the selection.
+ *
+ * The canonical analysis the user was shown is forwarded too so the backend can
+ * refuse a blocking role mismatch (PD-M9-037). It is optional at the contract
+ * level only for a pre-change client tab.
  */
 export function startResumeEnhancement(
   sessionId: string,
   providerId: AiProviderId,
   modelId: string,
   suggestions: EnhancementSuggestion[],
+  analysis?: AnalysisResult,
 ): Promise<{ operationId: string }> {
   return apiRequest<{ operationId: string }>(
     `/api/enhancements/${encodeURIComponent(sessionId)}/enhance`,
-    { method: 'POST', body: { providerId, modelId, suggestions } },
+    {
+      method: 'POST',
+      body:
+        analysis === undefined
+          ? { providerId, modelId, suggestions }
+          : { providerId, modelId, suggestions, analysis },
+    },
   )
 }
 
@@ -207,5 +220,20 @@ export function getEnhancementOperationStatus(
 ): Promise<AiOperationStatus> {
   return apiRequest<AiOperationStatus>(
     `/api/enhancements/${encodeURIComponent(sessionId)}/operations/${encodeURIComponent(operationId)}`,
+  )
+}
+
+/**
+ * Cancels one of the session's AI operations (ADR-010). The response is the
+ * authoritative post-cancel status, so the caller can distinguish `cancelled`
+ * from an operation that completed before the cancel arrived.
+ */
+export function cancelEnhancementOperation(
+  sessionId: string,
+  operationId: string,
+): Promise<AiOperationStatus> {
+  return apiRequest<AiOperationStatus>(
+    `/api/enhancements/${encodeURIComponent(sessionId)}/operations/${encodeURIComponent(operationId)}/cancel`,
+    { method: 'POST' },
   )
 }

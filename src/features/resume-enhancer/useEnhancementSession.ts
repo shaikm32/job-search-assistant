@@ -38,5 +38,30 @@ export function useEnhancementSession(sessionId: string | undefined) {
     void load()
   }, [load])
 
-  return { status, session, error, reload: load }
+  /**
+   * Silent re-fetch used after the authoritative enhancement operation
+   * completes. It never toggles the page back to `loading` and keeps the last
+   * session on a transient failure, so the result UI does not flash or vanish.
+   * A 404 still means the session is gone (discarded or expired).
+   */
+  const refresh = useCallback(async () => {
+    if (!sessionId) {
+      setStatus('not-found')
+      return
+    }
+    try {
+      const nextSession = await getEnhancementSession(sessionId)
+      setSession(nextSession)
+      setStatus('ready')
+      setError(null)
+    } catch (refreshError) {
+      if (refreshError instanceof ApiError && refreshError.statusCode === 404) {
+        setStatus('not-found')
+        setError(null)
+      }
+      // Any other failure is transient: keep the current session and status.
+    }
+  }, [sessionId])
+
+  return { status, session, error, reload: load, refresh }
 }

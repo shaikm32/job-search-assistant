@@ -6,9 +6,19 @@ interface FieldProps {
   error?: string | null
   hint?: string
   children: ReactNode
+  /** Hides the label visually while keeping it programmatic (htmlFor + text)
+      so screen readers still get an accessible name. Default false. */
+  hideLabel?: boolean
 }
 
-export function Field({ id, label, error, hint, children }: FieldProps) {
+export function Field({
+  id,
+  label,
+  error,
+  hint,
+  children,
+  hideLabel = false,
+}: FieldProps) {
   const errorId = error ? `${id}-error` : undefined
   // Link the control to its error message for assistive technology.
   // Visual presentation is unchanged; no validation behavior changes.
@@ -18,7 +28,7 @@ export function Field({ id, label, error, hint, children }: FieldProps) {
       : children
   return (
     <div className="field">
-      <label className="field-label" htmlFor={id}>
+      <label className={hideLabel ? 'field-label sr-only' : 'field-label'} htmlFor={id}>
         {label}
       </label>
       {control}

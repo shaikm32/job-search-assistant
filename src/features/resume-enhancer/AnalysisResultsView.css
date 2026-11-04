@@ -1,0 +1,331 @@
+/* Resume Analysis Results â€” approved reference composition.
+   Summary card â†’ Key Strengths card â†’ Key Gaps card â†’ optional next steps.
+   Existing liquid-glass design tokens only. */
+
+.analysis-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.analysis-results__title {
+  margin: 0 0 var(--space-1);
+  font-size: 21px;
+  line-height: 1.25;
+}
+
+.analysis-results__subtitle {
+  margin: 0 0 var(--space-2);
+  max-width: 62ch;
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+
+.analysis-results__summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-lg);
+  background: var(--glass-elevated);
+  box-shadow: var(--shadow-md);
+  min-width: 0;
+}
+
+.analysis-results__outcome-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  align-items: start;
+  min-width: 0;
+}
+
+.analysis-results__outcome {
+  min-width: 0;
+}
+
+.analysis-results__outcome-label {
+  margin: 0 0 var(--space-1);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.analysis-results__outcome-heading {
+  margin: 0 0 var(--space-1);
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 600;
+}
+
+.analysis-results__outcome-heading--success {
+  color: var(--success);
+}
+.analysis-results__outcome-heading--warning {
+  color: var(--warning);
+}
+.analysis-results__outcome-heading--danger {
+  color: var(--danger);
+}
+
+.analysis-results__outcome-explanation {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.analysis-results__ats {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.analysis-results__ats-label {
+  margin: 0;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.analysis-results__ats-score-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-3);
+}
+
+.analysis-results__ats-score {
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-primary);
+}
+
+.analysis-results__ats-max {
+  color: var(--text-muted);
+}
+
+.analysis-results__disclaimer {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.analysis-results__divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0;
+}
+
+.analysis-results__roles-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: var(--space-4);
+  align-items: start;
+  min-width: 0;
+}
+
+.analysis-results__role-cell {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.analysis-results__role-label {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.analysis-results__role-value {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.analysis-results__role-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: 16px;
+}
+
+.analysis-results__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-glass);
+  min-width: 0;
+}
+
+.analysis-results__panel--mismatch {
+  background: var(--danger-bg);
+  border-left: 3px solid var(--danger);
+}
+
+.analysis-results__panel--next-step {
+  background: var(--info-bg);
+  border-left: 3px solid var(--info);
+}
+
+.analysis-results__panel--alignment {
+  background: var(--surface);
+}
+
+.analysis-results__panel-title {
+  margin: 0 0 var(--space-1);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.analysis-results__panel--mismatch .analysis-results__panel-title {
+  color: var(--danger);
+}
+.analysis-results__panel--next-step .analysis-results__panel-title {
+  color: var(--info);
+}
+.analysis-results__panel--alignment .analysis-results__panel-title {
+  color: var(--text-secondary);
+}
+
+.analysis-results__panel p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.analysis-results__summary-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.analysis-results__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-lg);
+  background: var(--glass-elevated);
+  box-shadow: var(--shadow-md);
+  min-width: 0;
+  margin-top: var(--space-4);
+}
+
+.analysis-results__card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.analysis-results__card-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.analysis-results__card-subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.analysis-results__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.analysis-results__strength-row,
+.analysis-results__gap-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  min-width: 0;
+}
+
+.analysis-results__strength-meta,
+.analysis-results__gap-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.analysis-results__strength-title,
+.analysis-results__gap-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.analysis-results__strength-description,
+.analysis-results__gap-description {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 767px) {
+  .analysis-results__outcome-row {
+    grid-template-columns: 1fr;
+  }
+  .analysis-results__roles-row {
+    grid-template-columns: 1fr;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+  .analysis-results__role-divider {
+    display: none;
+  }
+  .analysis-results__ats-score-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+  }
+  .analysis-results__ats-label {
+    text-align: left;
+  }
+  .analysis-results__summary {
+    padding: var(--space-4);
+  }
+  .analysis-results__card {
+    padding: var(--space-4);
+    margin-top: var(--space-4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .analysis-results,
+  .analysis-results * {
+    animation: none;
+    transition: none;
+  }
+}

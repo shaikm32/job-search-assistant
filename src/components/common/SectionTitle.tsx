@@ -43,12 +43,22 @@ export function LinkGlyph() {
   )
 }
 
+export function SettingsGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM8 2v1.6M8 12.4v1.6M2 8h1.6M12.4 8h1.6M5.6 5.6l1.1 1.1M10.4 10.4l1.1 1.1M10.4 5.6l-1.1 1.1M5.6 10.4l-1.1 1.1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 const ICONS = {
   briefcase: BriefcaseGlyph,
   doc: DocGlyph,
   note: NoteGlyph,
   user: UserGlyph,
   link: LinkGlyph,
+  settings: SettingsGlyph,
 } as const
 
 export type SectionIcon = keyof typeof ICONS

@@ -1,4 +1,12 @@
 import { createBrowserRouter } from 'react-router'
+// The Resume Enhancer progress experience is a dialog over the page, so its
+// stylesheets are loaded with the route table. Keeping stylesheets out of the
+// presentational components lets those components be server-rendered by the
+// tests (the test runner cannot import `.css`).
+import '../features/resume-enhancer/AiOperationProgress.css'
+import '../features/resume-enhancer/AnalysisResultsView.css'
+import '../features/resume-enhancer/EnhancementProgressDialog.css'
+import '../features/settings/SettingsPage.css'
 import { AddApplicationPage } from '../features/applications/AddApplicationPage.js'
 import { ApplicationDetailPage } from '../features/applications/ApplicationDetailPage.js'
 import { ApplicationsPage } from '../features/applications/ApplicationsPage.js'
@@ -8,7 +16,6 @@ import { AddPersonPage } from '../features/people/AddPersonPage.js'
 import { EditPersonPage } from '../features/people/EditPersonPage.js'
 import { PeoplePage } from '../features/people/PeoplePage.js'
 import { PersonDetailPage } from '../features/people/PersonDetailPage.js'
-import { EnhancementSessionPage } from '../features/resume-enhancer/EnhancementSessionPage.js'
 import { ResumeEnhancerPage } from '../features/resume-enhancer/ResumeEnhancerPage.js'
 import { SettingsPage } from '../features/settings/SettingsPage.js'
 import { AppShell } from './AppShell.js'
@@ -32,7 +39,6 @@ export const router = createBrowserRouter([
       { path: 'people/:id', element: <PersonDetailPage /> },
       { path: 'people/:id/edit', element: <EditPersonPage /> },
       { path: 'resume-enhancer', element: <ResumeEnhancerPage /> },
-      { path: 'resume-enhancer/:sessionId', element: <EnhancementSessionPage /> },
       { path: 'settings', element: <SettingsPage /> },
       {
         path: '*',

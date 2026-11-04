@@ -14,6 +14,9 @@ interface DropzoneFieldProps {
       immediate-upload pickers (edit-page attach/replace), which keep the
       previous fire-and-forget display behavior. */
   onClear?: () => void
+  /** Hides the visible field label while keeping it programmatic (the
+      dropzone keeps `label` in its aria-label). Default false. */
+  hideLabel?: boolean
 }
 
 export function DropzoneField({
@@ -25,6 +28,7 @@ export function DropzoneField({
   error,
   onFile,
   onClear,
+  hideLabel = false,
 }: DropzoneFieldProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
@@ -80,19 +84,20 @@ export function DropzoneField({
 
   // Selected state: hide the instructional text, show the filename cleanly
   // with Change (native label activation, same as the empty surface) and,
-  // where supported, Remove. The container is a plain div so the Remove
-  // button never triggers label activation.
+  // where supported, Remove. The container reuses the empty state's dropzone
+  // surface (`.dropzone--selected`) but stays a plain div so the Remove
+  // button never triggers file selection.
   if (fileName) {
     return (
-      <Field id={id} label={label} error={error}>
+      <Field id={id} label={label} error={error} hideLabel={hideLabel}>
         <div
-          className={`document-row dropzone-selected${dragging ? ' dropzone--over' : ''}`}
+          className={`dropzone dropzone--selected${dragging ? ' dropzone--over' : ''}`}
           {...dropHandlers}
         >
           {fileInput}
-          <div>
-            <div className="document-name">{fileName}</div>
-          </div>
+          <span className="dropzone-selected-name" title={fileName}>
+            {fileName}
+          </span>
           <div className="document-actions">
             <label
               className="button button--ghost"
@@ -126,7 +131,7 @@ export function DropzoneField({
   }
 
   return (
-    <Field id={id} label={label} error={error}>
+    <Field id={id} label={label} error={error} hideLabel={hideLabel}>
       {/* Picker trigger is the label's NATIVE activation (click anywhere on
           this surface forwards to the file input with a full user gesture),
           so no manual input.click() runs on mouse click. preventDefault()
