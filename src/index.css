@@ -1842,6 +1842,9 @@ input[type='file'].input {
 
   .filter-field {
     min-width: 0;
+    /* Stacked layout: the 12rem flex basis applies to height, so reset it or
+       every filter field stretches into a 12rem-tall block. */
+    flex: 0 0 auto;
   }
 }
 
