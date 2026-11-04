@@ -12,13 +12,16 @@ import {
   AiProviderRequestFailedError,
   AiResponseInvalidError,
   SecureStorageUnavailableError,
+  isAbortError,
 } from './ai.errors.js'
 import {
   deleteAiProviderConfiguration,
   isAiProviderConfigured,
+  listAiProviderConfigurations,
+  setAiProviderDisplayName,
   upsertAiProviderConfiguration,
 } from './ai.repository.js'
-import type { SaveAiConfigurationInput } from './ai.types.js'
+import type { SaveAiConfigurationInput, UpdateAiProviderDisplayNameInput } from './ai.types.js'
 import { getCredentialStore } from './credential-store-factory.js'
 import {
   findProviderModel,
@@ -58,10 +61,15 @@ function buildSettings(): AiSettings {
   const store = getCredentialStore()
   const secureStoreAvailable = store.isAvailable()
   const db = getDatabase()
+  const configurations = new Map(
+    listAiProviderConfigurations(db).map((record) => [record.provider, record]),
+  )
   return {
     providers: listProviderDescriptors().map((descriptor) => ({
       ...descriptor,
-      configured: secureStoreAvailable && isAiProviderConfigured(db, descriptor.id),
+      configured: secureStoreAvailable && configurations.has(descriptor.id),
+      customDisplayName:
+        configurations.get(descriptor.id)?.customDisplayName ?? null,
     })),
     secureStoreAvailable,
     secureStoreMessage: secureStoreAvailable ? null : SECURE_STORE_UNAVAILABLE_MESSAGE,
@@ -99,6 +107,39 @@ export function saveAiConfiguration(input: SaveAiConfigurationInput): AiSettings
     upsertAiProviderConfiguration(db, input.provider, new Date().toISOString())
   })
 
+  return buildSettings()
+}
+
+/**
+ * Sets or clears one configured provider's display name.
+ *
+ * Renaming is presentation-only: the canonical provider identifier stays the
+ * primary key, and the stored credential and model configuration are untouched
+ * (AI_ARCHITECTURE.md §17). A name equal to the canonical name is stored as
+ * null so the provider uses its default label.
+ */
+export function updateAiProviderDisplayName(
+  provider: AiProviderId,
+  input: UpdateAiProviderDisplayNameInput,
+): AiSettings {
+  const adapter = getProviderAdapter(provider)
+  if (!adapter) {
+    throw new ValidationError('Select a supported AI provider.')
+  }
+  const db = getDatabase()
+  if (!isAiProviderConfigured(db, provider)) {
+    throw new ValidationError('Connect that AI provider before renaming it.')
+  }
+  const candidate = input.displayName?.trim() ?? null
+  const displayName =
+    candidate === null ||
+    candidate.length === 0 ||
+    candidate === adapter.descriptor.displayName
+      ? null
+      : candidate
+  runInTransaction(db, () => {
+    setAiProviderDisplayName(db, provider, displayName, new Date().toISOString())
+  })
   return buildSettings()
 }
 
@@ -193,7 +234,9 @@ async function refreshDynamicCatalogs(
  * example structured output) are listed the same way selection validation
  * treats them (ADR-006): excluded from options for structured-output
  * operations, so a `none` model can never appear as selectable or as the
- * default.
+ * default. `prompted_json` models satisfy the structured-output requirement
+ * (the adapter carries the schema in the prompt and validation enforces
+ * conformance), so only `none` models are excluded.
  */
 export async function getAiOperationOptions(operation: AiOperation): Promise<AiOperationOptions> {
   const settings = buildSettings()
@@ -212,7 +255,7 @@ export async function getAiOperationOptions(operation: AiOperation): Promise<AiO
           : (models[0]?.modelId ?? null)
       return {
         id: provider.id,
-        displayName: provider.displayName,
+        displayName: provider.customDisplayName ?? provider.displayName,
         models,
         defaultModelId: resolvedDefault,
       }
@@ -238,6 +281,9 @@ export interface ValidatedAiSelection {
  * backend verifies that the provider is registered, that it is configured,
  * that the model belongs to that provider, that the model supports the
  * operation, and that the model has the capability the operation requires.
+ * `prompted_json` models satisfy the structured-output requirement (the
+ * adapter carries the schema in the prompt and validation enforces
+ * conformance), so only `none` models are rejected.
  *
  * Every failure is a safe, typed application error (AI_ARCHITECTURE.md §18).
  */
@@ -329,8 +375,16 @@ function validateStructuredOutput(
  * failure into a safe application-level error. The credential exists only
  * inside this call and is handed solely to the adapter; it never reaches a
  * response, a log, or persisted state.
+ *
+ * `signal` is the owning AI operation's abort signal (ADR-010). It is forwarded
+ * to the adapter so cancellation aborts the provider request; an aborted
+ * request is rethrown unchanged rather than translated (it is control flow for
+ * a user-cancelled operation, not a provider failure).
  */
-export async function executeAiRequest(request: AiRequest): Promise<AiResponse> {
+export async function executeAiRequest(
+  request: AiRequest,
+  signal?: AbortSignal,
+): Promise<AiResponse> {
   const selection = validateAiSelection(request.operation, {
     providerId: request.providerId,
     modelId: request.modelId,
@@ -353,10 +407,15 @@ export async function executeAiRequest(request: AiRequest): Promise<AiResponse> 
     response = await adapter.execute(
       { ...request, providerId: selection.providerId, modelId: selection.modelId },
       credential,
+      signal,
     )
   } catch (error) {
     if (error instanceof ApiError) {
       // Adapter-translated safe errors pass through unchanged.
+      throw error
+    }
+    if (signal?.aborted || isAbortError(error)) {
+      // A cancelled operation: never reported or logged as a provider failure.
       throw error
     }
     // Raw provider errors are never surfaced or logged in detail: only the

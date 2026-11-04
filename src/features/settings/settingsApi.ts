@@ -25,6 +25,21 @@ export function saveAiSettings(provider: AiProviderId, apiKey: string): Promise<
 }
 
 /**
+ * Renames a configured provider. Only the display label changes; the
+ * canonical provider identifier and its stored credential are untouched.
+ * Passing null restores the provider's default name.
+ */
+export function renameAiProvider(
+  provider: AiProviderId,
+  displayName: string | null,
+): Promise<AiSettings> {
+  return apiRequest<AiSettings>(`/api/ai/settings/${encodeURIComponent(provider)}`, {
+    method: 'PATCH',
+    body: { displayName },
+  })
+}
+
+/**
  * Clears exactly one provider's configuration. Other providers are untouched.
  */
 export function clearAiSettings(provider: AiProviderId): Promise<AiSettings> {

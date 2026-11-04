@@ -1,12 +1,18 @@
 import { useState } from 'react'
-import type { AiProviderId } from '../../../shared/domain/ai.js'
-import { ApiError } from '../../api/client.js'
+import type {
+  AiProviderConfigurationState,
+  AiProviderId,
+} from '../../../shared/domain/ai.js'
+import { resolveAiProviderDisplayName } from '../../../shared/domain/ai.js'
 import { useConfirm } from '../../components/common/ConfirmDialog.js'
-import { Field } from '../../components/common/Field.js'
-import { SectionTitle } from '../../components/common/SectionTitle.js'
-import { StatusBadge } from '../../components/common/StatusBadge.js'
 import { StatusBanner } from '../../components/common/StatusBanner.js'
-import { clearAiSettings, saveAiSettings } from './settingsApi.js'
+import { ApiKeyDialog, RenameProviderDialog } from './ProviderDialogs.js'
+import {
+  ConnectedProviderRow,
+  PopularProviderRow,
+} from './ProviderRow.js'
+import { providerManagementErrorMessage } from './providerManagementError.js'
+import { clearAiSettings, renameAiProvider, saveAiSettings } from './settingsApi.js'
 import { useAiSettings } from './useAiSettings.js'
 
 /**
@@ -16,40 +22,60 @@ import { useAiSettings } from './useAiSettings.js'
 const PRIVACY_DISCLOSURE =
   'Your resume and job description will be sent over the internet to the AI provider you selected so the AI can analyze or enhance them. How your data is handled by that provider is governed by that provider\u2019s privacy policy and terms.'
 
+type ActiveDialog =
+  | {
+      kind: 'apiKey'
+      provider: AiProviderConfigurationState
+      mode: 'connect' | 'update'
+    }
+  | { kind: 'rename'; provider: AiProviderConfigurationState }
+
+function KeyOutlineGlyph() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="8" cy="15.5" r="4.2" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="m11.2 12.3 8.1-8.1M16.2 7.3l2.4 2.4M18.6 4.9l2.4 2.4"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
 /**
- * AI provider settings (AI_ARCHITECTURE.md §17, ADR-006).
+ * Provider management (AI_ARCHITECTURE.md §17, ADR-006).
  *
- * Settings configures providers only, never models. Each provider is
- * configured independently: the user selects a provider, enters its
- * credential, and can save/update or clear that one provider without
- * affecting any other.
- *
- * The API key exists only in component state while it is being entered and
- * submitted. It is never written to browser storage, never placed in a URL,
- * and never read back from the backend.
+ * Settings configures providers only, never models. Connected providers are
+ * shown in one list; every offered-but-unconfigured provider appears under
+ * Popular Providers. API keys exist only in dialog state while they are being
+ * entered and submitted: they are never written to browser storage, placed in
+ * a URL, or read back from the backend.
  */
 export function SettingsPage() {
   const { status, settings, error, setSettings } = useAiSettings()
-  const [selectedProviderId, setSelectedProviderId] = useState<AiProviderId>('openai')
-  const [apiKey, setApiKey] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [busyProviderId, setBusyProviderId] = useState<AiProviderId | null>(null)
+  const [dialog, setDialog] = useState<ActiveDialog | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const { confirm, dialog } = useConfirm()
+  const { confirm, dialog: confirmDialog } = useConfirm()
 
   if (status === 'loading') {
     return (
-      <div className="page">
-        <h1 className="page-title">Settings</h1>
-        <StatusBanner tone="loading">Loading your settings…</StatusBanner>
+      <div className="page settings-page">
+        <h1 className="page-title">Providers</h1>
+        <p className="page-subtitle">Connect and manage model providers</p>
+        <StatusBanner tone="loading">Loading your providers…</StatusBanner>
       </div>
     )
   }
 
   if (status === 'error' || !settings) {
     return (
-      <div className="page">
-        <h1 className="page-title">Settings</h1>
+      <div className="page settings-page">
+        <h1 className="page-title">Providers</h1>
+        <p className="page-subtitle">Connect and manage model providers</p>
         <StatusBanner tone="error">
           {error ?? 'Something went wrong. Please try again.'}
         </StatusBanner>
@@ -57,78 +83,81 @@ export function SettingsPage() {
     )
   }
 
-  const selectedProvider = settings.providers.find(
-    (entry) => entry.id === selectedProviderId,
-  )
   const canStoreCredentials = settings.secureStoreAvailable
-  const configuredProviders = settings.providers.filter((entry) => entry.configured)
+  const connectedProviders = settings.providers.filter((entry) => entry.configured)
+  const popularProviders = settings.providers.filter((entry) => !entry.configured)
 
-  const handleSave = async (event: React.FormEvent) => {
-    event.preventDefault()
-    if (busy || !canStoreCredentials || !selectedProvider) {
-      return
-    }
-    setBusy(true)
+  const openDialog = (next: ActiveDialog) => {
+    setActionError(null)
+    setDialog(next)
+  }
+
+  const handleSaveKey = async (
+    provider: AiProviderConfigurationState,
+    apiKey: string,
+  ) => {
     setActionError(null)
     setNotice(null)
-    try {
-      const next = await saveAiSettings(selectedProvider.id, apiKey)
-      setSettings(next)
-      // The key is discarded from the UI as soon as it has been stored.
-      setApiKey('')
-      setNotice(`Your ${selectedProvider.displayName} configuration has been saved.`)
-    } catch (saveError) {
-      setActionError(
-        saveError instanceof ApiError
-          ? saveError.message
-          : 'Something went wrong. Please try again.',
-      )
-    } finally {
-      setBusy(false)
+    const next = await saveAiSettings(provider.id, apiKey)
+    setSettings(next)
+    const name = resolveAiProviderDisplayName(provider)
+    setNotice(
+      provider.configured
+        ? `${name} API key updated.`
+        : `${name} is now connected and available to AI features.`,
+    )
+  }
+
+  const handleRename = async (
+    provider: AiProviderConfigurationState,
+    displayName: string | null,
+  ) => {
+    setActionError(null)
+    setNotice(null)
+    const next = await renameAiProvider(provider.id, displayName)
+    setSettings(next)
+    const updated = next.providers.find((entry) => entry.id === provider.id)
+    if (updated?.customDisplayName) {
+      setNotice(`${updated.displayName} is now shown as ${updated.customDisplayName}.`)
+    } else {
+      setNotice(`${provider.displayName} now uses its default name.`)
     }
   }
 
-  const handleClear = async () => {
-    if (busy || !selectedProvider || !selectedProvider.configured) {
+  const handleRemove = async (provider: AiProviderConfigurationState) => {
+    if (busyProviderId) {
       return
     }
+    const name = resolveAiProviderDisplayName(provider)
     const confirmed = await confirm({
-      title: `Remove ${selectedProvider.displayName} configuration?`,
+      title: `Remove ${name}?`,
       message:
-        `Your saved ${selectedProvider.displayName} API key will be removed from this computer. ` +
-        'Your other providers are unaffected. AI features cannot use this provider until you add a key again.',
-      confirmLabel: 'Remove',
+        `The saved API key and provider configuration for ${name} will be removed from this computer. ` +
+        'Your other providers are unaffected. AI features cannot use this provider until you connect it again.',
+      confirmLabel: 'Remove provider',
       danger: true,
     })
     if (!confirmed) {
       return
     }
-    setBusy(true)
+    setBusyProviderId(provider.id)
     setActionError(null)
     setNotice(null)
     try {
-      const next = await clearAiSettings(selectedProvider.id)
+      const next = await clearAiSettings(provider.id)
       setSettings(next)
-      setApiKey('')
-      setNotice(`Your ${selectedProvider.displayName} configuration has been removed.`)
-    } catch (clearError) {
-      setActionError(
-        clearError instanceof ApiError
-          ? clearError.message
-          : 'Something went wrong. Please try again.',
-      )
+      setNotice(`The saved API key and configuration for ${name} have been removed.`)
+    } catch (removeError) {
+      setActionError(providerManagementErrorMessage(removeError))
     } finally {
-      setBusy(false)
+      setBusyProviderId(null)
     }
   }
 
   return (
-    <div className="page">
-      <h1 className="page-title">Settings</h1>
-      <p className="page-subtitle">
-        Configure the AI providers used for resume analysis and enhancement. You may
-        configure more than one provider; each keeps its own stored credential.
-      </p>
+    <div className="page settings-page">
+      <h1 className="page-title">Providers</h1>
+      <p className="page-subtitle">Connect and manage model providers</p>
 
       {notice ? <StatusBanner tone="notice">{notice}</StatusBanner> : null}
       {actionError ? <StatusBanner tone="error">{actionError}</StatusBanner> : null}
@@ -136,104 +165,67 @@ export function SettingsPage() {
         <StatusBanner tone="error">{settings.secureStoreMessage}</StatusBanner>
       ) : null}
 
-      <form className="form" onSubmit={handleSave} noValidate>
-        <fieldset className="form-section">
-          <legend>
-            <SectionTitle icon="user">AI Provider</SectionTitle>
-          </legend>
+      <section className="settings-section" aria-labelledby="connected-providers-title">
+        <h2 id="connected-providers-title">Connected Providers</h2>
 
-          <Field id="aiProvider" label="AI Provider">
-            <select
-              id="aiProvider"
-              className="input"
-              value={selectedProviderId}
-              disabled={busy || !canStoreCredentials}
-              onChange={(event) => setSelectedProviderId(event.target.value as AiProviderId)}
-            >
-              {settings.providers.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.displayName}
-                  {entry.configured ? ' (configured)' : ''}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          {selectedProvider ? (
-            <p className="muted">
-              <StatusBadge tone={selectedProvider.configured ? 'success' : 'neutral'}>
-                {selectedProvider.configured ? 'Configured' : 'Not configured'}
-              </StatusBadge>{' '}
-              {selectedProvider.displayName}
-            </p>
-          ) : null}
-
-          <Field
-            id="apiKey"
-            label={selectedProvider?.credentialLabel ?? 'API Key'}
-            hint="You supply and own this key. It is stored securely on this computer and is never shown again after saving."
-          >
-            <input
-              id="apiKey"
-              className="input"
-              type="password"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder={
-                selectedProvider?.configured
-                  ? 'Enter a new key to replace the saved one'
-                  : 'Paste your API key'
-              }
-              value={apiKey}
-              disabled={busy || !canStoreCredentials}
-              onChange={(event) => setApiKey(event.target.value)}
-            />
-          </Field>
-
-          {selectedProvider?.configured ? (
-            <p className="muted">
-              A key is already saved for {selectedProvider.displayName}. Saving a new key
-              replaces it; Remove deletes it. Your other providers are unaffected.
-            </p>
-          ) : null}
-
-          <div className="form-actions">
-            <button
-              className="button button--ghost button--danger"
-              type="button"
-              disabled={busy || !selectedProvider?.configured}
-              onClick={() => void handleClear()}
-            >
-              Remove Configuration
-            </button>
-            <button
-              className="button button--primary"
-              type="submit"
-              disabled={busy || !canStoreCredentials}
-            >
-              {busy ? 'Saving…' : selectedProvider?.configured ? 'Update' : 'Save'}
-            </button>
+        {connectedProviders.length === 0 ? (
+          <div className="provider-empty">
+            <span className="provider-empty-icon">
+              <KeyOutlineGlyph />
+            </span>
+            <div>
+              <strong>No providers connected yet</strong>
+              <p>
+                Choose a provider below and add its API key to start using AI
+                features.
+              </p>
+            </div>
           </div>
-        </fieldset>
-      </form>
-
-      <section aria-label="Configured AI providers">
-        <h2>Configured AI Providers</h2>
-        {configuredProviders.length === 0 ? (
-          <p className="muted">No AI providers are configured yet.</p>
         ) : (
-          <ul className="detail-list">
-            {configuredProviders.map((entry) => (
-              <li key={entry.id}>
-                <StatusBadge tone="success">Configured</StatusBadge>{' '}
-                <strong>{entry.displayName}</strong>
-              </li>
+          <ul className="provider-list">
+            {connectedProviders.map((provider) => (
+              <ConnectedProviderRow
+                key={provider.id}
+                provider={provider}
+                busy={busyProviderId === provider.id}
+                onUpdateKey={(entry) =>
+                  openDialog({ kind: 'apiKey', provider: entry, mode: 'update' })
+                }
+                onRename={(entry) => openDialog({ kind: 'rename', provider: entry })}
+                onRemove={(entry) => void handleRemove(entry)}
+              />
             ))}
           </ul>
         )}
       </section>
 
-      <section aria-label="Privacy">
+      <section className="settings-section" aria-labelledby="popular-providers-title">
+        <h2 id="popular-providers-title">Popular Providers</h2>
+
+        {popularProviders.length === 0 ? (
+          <div className="provider-empty provider-empty--quiet">
+            <div>
+              <strong>Everything is connected</strong>
+              <p>Every supported provider is already available on this computer.</p>
+            </div>
+          </div>
+        ) : (
+          <ul className="provider-list provider-list--popular">
+            {popularProviders.map((provider) => (
+              <PopularProviderRow
+                key={provider.id}
+                provider={provider}
+                disabled={!canStoreCredentials || busyProviderId !== null}
+                onConnect={(entry) =>
+                  openDialog({ kind: 'apiKey', provider: entry, mode: 'connect' })
+                }
+              />
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="settings-privacy" aria-label="Privacy">
         <h2>Before you use AI features</h2>
         <div className="banner banner--notice" role="note">
           <p>
@@ -248,7 +240,24 @@ export function SettingsPage() {
         </div>
       </section>
 
-      {dialog}
+      {dialog?.kind === 'apiKey' ? (
+        <ApiKeyDialog
+          provider={dialog.provider}
+          mode={dialog.mode}
+          onClose={() => setDialog(null)}
+          onSubmit={(apiKey) => handleSaveKey(dialog.provider, apiKey)}
+        />
+      ) : null}
+
+      {dialog?.kind === 'rename' ? (
+        <RenameProviderDialog
+          provider={dialog.provider}
+          onClose={() => setDialog(null)}
+          onSubmit={(displayName) => handleRename(dialog.provider, displayName)}
+        />
+      ) : null}
+
+      {confirmDialog}
     </div>
   )
 }

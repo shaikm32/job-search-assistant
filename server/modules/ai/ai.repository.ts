@@ -16,7 +16,7 @@ import type {
  * only after the credential write succeeds and removed only for that one
  * provider, so configuring or clearing one provider never affects another.
  */
-const SELECT_COLUMNS = 'provider, updated_at'
+const SELECT_COLUMNS = 'provider, display_name, updated_at'
 
 function toRecord(row: AiProviderConfigurationRow): AiProviderConfigurationRecord | null {
   if (!isAiProviderId(row.provider)) {
@@ -24,7 +24,11 @@ function toRecord(row: AiProviderConfigurationRow): AiProviderConfigurationRecor
     // internal storage detail.
     return null
   }
-  return { provider: row.provider, updatedAt: row.updated_at }
+  return {
+    provider: row.provider,
+    customDisplayName: row.display_name ?? null,
+    updatedAt: row.updated_at,
+  }
 }
 
 /** All configured providers, ordered by provider identifier. */
@@ -44,6 +48,19 @@ export function listAiProviderConfigurations(
   return records
 }
 
+/** One configured provider's non-secret configuration, or null. */
+export function getAiProviderConfiguration(
+  db: DatabaseSync,
+  provider: AiProviderId,
+): AiProviderConfigurationRecord | null {
+  const row = db
+    .prepare(
+      `SELECT ${SELECT_COLUMNS} FROM ai_provider_configuration WHERE provider = ?`,
+    )
+    .get(provider) as unknown as AiProviderConfigurationRow | undefined
+  return row ? toRecord(row) : null
+}
+
 /** True when a configuration row exists for the provider. */
 export function isAiProviderConfigured(db: DatabaseSync, provider: AiProviderId): boolean {
   const row = db
@@ -57,12 +74,23 @@ export function upsertAiProviderConfiguration(
   db: DatabaseSync,
   provider: AiProviderId,
   updatedAt: string,
-): AiProviderConfigurationRecord {
+): void {
   db.prepare(
     'INSERT INTO ai_provider_configuration (provider, updated_at) VALUES (?, ?) ' +
       'ON CONFLICT(provider) DO UPDATE SET updated_at = excluded.updated_at',
   ).run(provider, updatedAt)
-  return { provider, updatedAt }
+}
+
+/** Sets or clears one provider's user-assigned display name. */
+export function setAiProviderDisplayName(
+  db: DatabaseSync,
+  provider: AiProviderId,
+  displayName: string | null,
+  updatedAt: string,
+): void {
+  db.prepare(
+    'UPDATE ai_provider_configuration SET display_name = ?, updated_at = ? WHERE provider = ?',
+  ).run(displayName, updatedAt, provider)
 }
 
 /** Removes the configuration row for one provider only. */

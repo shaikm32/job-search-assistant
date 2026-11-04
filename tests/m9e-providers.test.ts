@@ -61,6 +61,7 @@ const VALID_ANALYSIS_RESULT = {
       id: 'nodejs-experience',
       title: 'Backend experience',
       description: 'The resume describes five years of Node.js services, matching the JD.',
+      area: 'experience',
     },
   ],
   gaps: [
@@ -69,8 +70,17 @@ const VALID_ANALYSIS_RESULT = {
       title: 'Kubernetes not evidenced',
       description: 'The resume does not mention Kubernetes, which the JD asks for.',
       jdEvidence: 'The job description requires Kubernetes experience.',
+      category: 'skills',
+      kind: 'not_demonstrated',
     },
   ],
+  roleAlignment: {
+    resumeRole: 'Backend Developer',
+    jobDescriptionRole: 'Senior Backend Engineer',
+    assessment: 'aligned',
+    uncertain: false,
+    reasons: ['Both roles focus on Node.js backend services.'],
+  },
 }
 class InMemoryCredentialStore {
   #credentials = new Map<string, string>()
@@ -249,7 +259,11 @@ describe('M9-E multi-provider configuration', () => {
       .prepare('SELECT * FROM ai_provider_configuration')
       .all() as unknown as Array<Record<string, unknown>>
     assert.equal(rows.length, 2)
-    assert.deepEqual(Object.keys(rows[0] ?? {}).sort(), ['provider', 'updated_at'])
+    assert.deepEqual(Object.keys(rows[0] ?? {}).sort(), [
+      'display_name',
+      'provider',
+      'updated_at',
+    ])
     for (const row of rows) {
       const serialized = JSON.stringify(row)
       assert.ok(!serialized.includes(SECRET_OPENAI))

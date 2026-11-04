@@ -6,12 +6,15 @@ import {
   getAiConfiguration,
   getAiOperationOptions,
   saveAiConfiguration,
+  updateAiProviderDisplayName,
 } from './ai.service.js'
 import {
   MAX_API_KEY_REQUEST_LIMIT,
+  MAX_DISPLAY_NAME_REQUEST_LIMIT,
   validateAiOperation,
   validateAiProviderId,
   validateSaveAiConfiguration,
+  validateUpdateAiProviderDisplayName,
 } from './ai.validation.js'
 
 /**
@@ -25,6 +28,7 @@ import {
  * Routes:
  * - GET    /api/ai/settings                → safe multi-provider settings
  * - PUT    /api/ai/settings                → save one provider's credential
+ * - PATCH  /api/ai/settings/:providerId    → rename one configured provider
  * - DELETE /api/ai/settings/:providerId    → clear one provider only
  * - GET    /api/ai/operation-options?operation=... → configured providers and
  *   their models for an operation (AI feature provider/model selection).
@@ -55,6 +59,15 @@ export async function handleAiRoutes(
       return true
     }
     return false
+  }
+
+  if (rest.length === 2 && rest[0] === 'settings' && request.method === 'PATCH') {
+    const providerId = validateAiProviderId(rest[1])
+    const input = validateUpdateAiProviderDisplayName(
+      await readJsonBody(request, MAX_DISPLAY_NAME_REQUEST_LIMIT),
+    )
+    sendJson(response, 200, updateAiProviderDisplayName(providerId, input))
+    return true
   }
 
   if (rest.length === 2 && rest[0] === 'settings' && request.method === 'DELETE') {
